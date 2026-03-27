@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
-import type { Device, EmeterData } from '../src/types/device.js';
+import type { Device, EmeterData } from './types/device.js';
 
 const require = createRequire(import.meta.url);
 const { cloudLogin, loginDeviceByIp } = require('tp-link-tapo-connect');

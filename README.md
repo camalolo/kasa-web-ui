@@ -81,6 +81,106 @@ kasa-web-ui/
 
 3. **Local Control**: All device operations (power toggle, energy queries, device info) happen over your LAN via direct connections to the plugs. No cloud round-trip after initial discovery.
 
+## Production Build
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/YOUR_USER/kasa-web-ui.git
+cd kasa-web-ui
+npm install
+```
+
+### 2. Adjust configuration
+
+Edit `vite.config.ts` — set `outDir` to wherever you want the static files served from on your system:
+
+```ts
+build: {
+  outDir: '/path/to/your/web/root/plugs',
+  emptyOutDir: true,
+}
+```
+
+### 3. Build
+
+```bash
+npm run build
+```
+
+This runs TypeScript checks (`tsc -b`) then Vite build. Output goes to the `outDir` you configured.
+
+### 4. Configure nginx
+
+Add these location blocks inside your HTTPS server block (adjust paths to match your `outDir`):
+
+```nginx
+location /plugs/api/ {
+    proxy_pass http://127.0.0.1:3001/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /plugs/ws {
+    proxy_pass http://127.0.0.1:3001/ws;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /plugs/ {
+    alias /path/to/your/web/root/plugs/;
+    try_files $uri $uri/ /plugs/index.html;
+}
+```
+
+Reload nginx:
+
+```bash
+sudo nginx -t && sudo nginx -s reload
+```
+
+### 5. Set up systemd service
+
+Create `/etc/systemd/system/kasa-web-ui.service`:
+
+```ini
+[Unit]
+Description=Kasa Web UI Server
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/npx tsx server/index.ts
+User=YOUR_USER
+WorkingDirectory=/path/to/kasa-web-ui
+Environment="HOME=/home/YOUR_USER" "USER=YOUR_USER" "NODE_ENV=production" "PORT=3001"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Adjust `User`, `WorkingDirectory`, and paths as needed. Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable kasa-web-ui.service
+sudo systemctl start kasa-web-ui.service
+```
+
+Check status:
+
+```bash
+sudo systemctl status kasa-web-ui.service
+```
+
 ## Script Reference
 
 | Command | Description |
@@ -89,6 +189,7 @@ kasa-web-ui/
 | `npm run dev:client` | Start Vite dev server only |
 | `npm run dev:server` | Start Express backend only (with tsx watch) |
 | `npm run build` | TypeScript check + Vite production build |
+| `npm run start` | Run the backend server (for use with systemd) |
 | `npm run preview` | Preview production build |
 
 ## Notes
