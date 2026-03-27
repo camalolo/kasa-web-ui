@@ -1,5 +1,5 @@
 // src/api/client.ts
-import type { Device, EmeterData, ScheduleRule } from '../types/device';
+import type { Device, EmeterData, EnergyData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
 
 const API_BASE = '/plugs/api';
 
@@ -81,12 +81,80 @@ export async function getEmeter(id: string): Promise<{ supported: boolean; data:
   return request<{ supported: boolean; data: EmeterData | null }>(`/devices/${encodeURIComponent(id)}/emeter`);
 }
 
-// Schedules
-export async function getSchedule(id: string): Promise<ScheduleRule[]> {
-  return request<ScheduleRule[]>(`/devices/${encodeURIComponent(id)}/schedule`);
-}
-
 // Sysinfo
 export async function getSysInfo(id: string): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}/sysinfo`);
+}
+
+// --- Schedules ---
+export async function getScheduleRules(id: string): Promise<ScheduleRulesResponse> {
+  return request<ScheduleRulesResponse>(`/devices/${encodeURIComponent(id)}/schedules`);
+}
+
+export async function addSchedule(id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules`, {
+    method: 'POST',
+    body: JSON.stringify(rule),
+  });
+}
+
+export async function editSchedule(id: string, ruleId: string, rule: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules/${encodeURIComponent(ruleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(rule),
+  });
+}
+
+export async function deleteSchedule(id: string, ruleId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules/${encodeURIComponent(ruleId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function toggleAllSchedules(id: string, enable: boolean): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules-enabled`, {
+    method: 'PUT',
+    body: JSON.stringify({ enable }),
+  });
+}
+
+// --- Countdown Timer ---
+export async function getCountdownRules(id: string): Promise<CountdownRulesResponse> {
+  return request<CountdownRulesResponse>(`/devices/${encodeURIComponent(id)}/countdown`);
+}
+
+export async function addCountdown(id: string, delaySeconds: number, turnOn: boolean): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/countdown`, {
+    method: 'POST',
+    body: JSON.stringify({ delay: delaySeconds, desired_state: turnOn ? 'on' : 'off' }),
+  });
+}
+
+export async function deleteCountdown(id: string, ruleId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/countdown/${encodeURIComponent(ruleId)}`, {
+    method: 'DELETE',
+  });
+}
+
+// --- Away Mode ---
+export async function getAwayModeRules(id: string): Promise<AwayModeRulesResponse> {
+  return request<AwayModeRulesResponse>(`/devices/${encodeURIComponent(id)}/away-mode`);
+}
+
+export async function addAwayMode(id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/away-mode`, {
+    method: 'POST',
+    body: JSON.stringify(rule),
+  });
+}
+
+export async function deleteAwayMode(id: string, ruleId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/away-mode/${encodeURIComponent(ruleId)}`, {
+    method: 'DELETE',
+  });
+}
+
+// --- Energy Data (history) ---
+export async function getEnergyData(id: string, year: number, month: number): Promise<EnergyData> {
+  return request<EnergyData>(`/devices/${encodeURIComponent(id)}/energy-data?year=${year}&month=${month}`);
 }

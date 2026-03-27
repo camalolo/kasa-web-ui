@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
 import type { Device, EmeterData } from './types/device.js';
+import { getOrCreateRawSession, clearAllRawSessions } from './tapo-protocol.js';
 
 const require = createRequire(import.meta.url);
 const { cloudLogin, loginDeviceByIp } = require('tp-link-tapo-connect');
@@ -346,6 +347,168 @@ export async function getEmeter(deviceId: string): Promise<EmeterData | null> {
   }
 }
 
+async function getDeviceIp(deviceId: string): Promise<string> {
+  const local = localDeviceInfo.get(deviceId);
+  if (local?.ip) return local.ip;
+  const cloudDev = cloudDevices.get(deviceId);
+  if (!cloudDev) throw new Error(`Device ${deviceId} not found`);
+  const ip = cloudDev.ip ?? (await resolveMacToIp(cloudDev.deviceMac));
+  if (!ip) throw new Error(`Cannot resolve IP for device ${deviceId}`);
+  return ip;
+}
+
+async function getRawSession(deviceId: string) {
+  const ip = await getDeviceIp(deviceId);
+  const { email, password } = getCredentials();
+  return getOrCreateRawSession(ip, email, password);
+}
+
+// --- Schedules ---
+
+export async function getScheduleRules(deviceId: string): Promise<Record<string, unknown>> {
+  const session = await getRawSession(deviceId);
+  return session.send({
+    method: 'get_schedule_rules',
+    params: { start_index: 0 },
+  });
+}
+
+export async function addScheduleRule(
+  deviceId: string,
+  rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] },
+): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'add_schedule_rule',
+    params: {
+      schedule_rule: {
+        name: rule.name,
+        smin: rule.smin,
+        sact: rule.sact,
+        eact: rule.eact,
+        emin: rule.emin,
+        repeat: rule.repeat,
+        enable: true,
+      },
+    },
+  });
+}
+
+export async function editScheduleRule(
+  deviceId: string,
+  ruleId: string,
+  updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean },
+): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'edit_schedule_rule',
+    params: {
+      schedule_rule: {
+        id: ruleId,
+        ...updates,
+      },
+    },
+  });
+}
+
+export async function deleteScheduleRules(deviceId: string, ruleIds: string[]): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'delete_schedule_rules',
+    params: { id_list: ruleIds },
+  });
+}
+
+export async function toggleAllSchedules(deviceId: string, enable: boolean): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'edit_schedule_rule',
+    params: {
+      schedule_rule: {
+        id: 'all',
+        enable,
+      },
+    },
+  });
+}
+
+// --- Countdown Timer ---
+
+export async function getCountdownRules(deviceId: string): Promise<Record<string, unknown>> {
+  const session = await getRawSession(deviceId);
+  return session.send({
+    method: 'get_countdown_rules',
+    params: { start_index: 0 },
+  });
+}
+
+export async function addCountdownRule(deviceId: string, delaySeconds: number, turnOn: boolean): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'add_countdown_rule',
+    params: {
+      delay: delaySeconds,
+      desired_states: { on: turnOn },
+      enable: true,
+    },
+  });
+}
+
+export async function deleteCountdownRules(deviceId: string, ruleIds: string[]): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'delete_countdown_rules',
+    params: { id_list: ruleIds },
+  });
+}
+
+// --- Away Mode (Anti-theft) ---
+
+export async function getAwayModeRules(deviceId: string): Promise<Record<string, unknown>> {
+  const session = await getRawSession(deviceId);
+  return session.send({
+    method: 'get_anti_theft_rules',
+    params: { start_index: 0 },
+  });
+}
+
+export async function addAwayModeRule(
+  deviceId: string,
+  rule: { frequency: number; start_time: number; end_time: number; duration: number },
+): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'add_anti_theft_rule',
+    params: {
+      anti_theft_rule: {
+        frequency: rule.frequency,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+        duration: rule.duration,
+        enable: true,
+      },
+    },
+  });
+}
+
+export async function deleteAwayModeRules(deviceId: string, ruleIds: string[]): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'delete_anti_theft_rules',
+    params: { id_list: ruleIds },
+  });
+}
+
+// --- Energy Data ---
+
+export async function getEnergyData(deviceId: string, year: number, month: number): Promise<Record<string, unknown>> {
+  const session = await getRawSession(deviceId);
+  return session.send({
+    method: 'get_energy_data',
+    params: { year, month },
+  });
+}
+
 export async function getSchedule(_deviceId: string): Promise<Record<string, unknown>[]> {
   // Tapo schedule API not available in tp-link-tapo-connect
   return [];
@@ -369,4 +532,5 @@ export async function logout(): Promise<void> {
   deviceControllers.clear();
   cloudDevices.clear();
   localDeviceInfo.clear();
+  clearAllRawSessions();
 }

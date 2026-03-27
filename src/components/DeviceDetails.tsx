@@ -1,62 +1,125 @@
 // src/components/DeviceDetails.tsx
 import { useState, useEffect } from 'react';
-import type { Device, ScheduleRule } from '../types/device';
+import type { Device, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse, EmeterData, EnergyData } from '../types/device';
+import ScheduleList from './ScheduleList';
+import CountdownTimer from './CountdownTimer';
+import AwayMode from './AwayMode';
+import EnergyMonitor from './EnergyMonitor';
 
 interface DeviceDetailsProps {
   device: Device;
   onClose: () => void;
   onRename: (id: string, alias: string) => Promise<void>;
-  onSetLedState: (id: string, value: boolean) => Promise<void>;
-  onReboot: (id: string) => Promise<void>;
-  fetchSchedule: (id: string) => Promise<ScheduleRule[]>;
-  emeterData: { voltage: number; current: number; power: number; total: number; powerFactor?: number } | null;
+  emeterData: EmeterData | null;
+  fetchScheduleRules: (id: string) => Promise<ScheduleRulesResponse>;
+  addSchedule: (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
+  editSchedule: (id: string, ruleId: string, updates: Record<string, unknown>) => Promise<void>;
+  deleteSchedule: (id: string, ruleId: string) => Promise<void>;
+  toggleAllSchedules: (id: string, enable: boolean) => Promise<void>;
+  fetchCountdownRules: (id: string) => Promise<CountdownRulesResponse>;
+  addCountdown: (id: string, delaySeconds: number, turnOn: boolean) => Promise<void>;
+  deleteCountdown: (id: string, ruleId: string) => Promise<void>;
+  fetchAwayModeRules: (id: string) => Promise<AwayModeRulesResponse>;
+  addAwayMode: (id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }) => Promise<void>;
+  deleteAwayMode: (id: string, ruleId: string) => Promise<void>;
+  fetchEnergyData: (id: string, year: number, month: number) => Promise<EnergyData>;
 }
+
+type TabId = 'info' | 'energy' | 'schedules' | 'timer' | 'away';
+
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'info', label: 'Info', icon: 'ℹ️' },
+  { id: 'energy', label: 'Energy', icon: '⚡' },
+  { id: 'schedules', label: 'Schedules', icon: '📅' },
+  { id: 'timer', label: 'Timer', icon: '⏱️' },
+  { id: 'away', label: 'Away', icon: '🏠' },
+];
 
 export default function DeviceDetails({
   device,
   onClose,
   onRename,
-  onSetLedState,
-  onReboot,
-  fetchSchedule,
   emeterData,
+  fetchScheduleRules,
+  addSchedule,
+  editSchedule,
+  deleteSchedule,
+  toggleAllSchedules,
+  fetchCountdownRules,
+  addCountdown,
+  deleteCountdown,
+  fetchAwayModeRules,
+  addAwayMode,
+  deleteAwayMode,
+  fetchEnergyData,
 }: DeviceDetailsProps) {
+  const [activeTab, setActiveTab] = useState<TabId>('info');
   const [editName, setEditName] = useState(device.name);
   const [isEditing, setIsEditing] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [isRebooting, setIsRebooting] = useState(false);
-  const [rebootCountdown, setRebootCountdown] = useState<number | null>(null);
-  const [schedules, setSchedules] = useState<ScheduleRule[]>([]);
-  const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [sysInfo, setSysInfo] = useState<Record<string, unknown> | null>(null);
   const [loadingSysInfo, setLoadingSysInfo] = useState(false);
-  const [ledState, setLedState] = useState(device.ledState);
+  const [energyHistory, setEnergyHistory] = useState<EnergyData>({ day_list: [], month_list: [] });
+  const [energyLoading, setEnergyLoading] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [timeUsage, setTimeUsage] = useState<{ today: string; past7: string; past30: string } | null>(null);
 
-  // Load sysinfo and schedules on mount
+  // Reset state when device changes
   useEffect(() => {
+    setEditName(device.name);
+    setIsEditing(false);
+    setSysInfo(null);
+    setActiveTab('info');
     loadSysInfo();
-    loadSchedules();
+    loadEnergyData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id]);
 
   async function loadSysInfo() {
     setLoadingSysInfo(true);
     try {
-      const res = await fetch(`/api/devices/${encodeURIComponent(device.id)}/sysinfo`);
+      const res = await fetch(`/plugs/api/devices/${encodeURIComponent(device.id)}/sysinfo`);
       const data = await res.json();
       setSysInfo(data);
+      // Extract time usage from sysinfo
+      const today = data['time_usage_today'];
+      const past7 = data['time_usage_past7'];
+      const past30 = data['time_usage_past30'];
+      if (today || past7 || past30) {
+        setTimeUsage({
+          today: typeof today === 'string' ? today : '0',
+          past7: typeof past7 === 'string' ? past7 : '0',
+          past30: typeof past30 === 'string' ? past30 : '0',
+        });
+      }
     } catch {
       // ignore
     }
     setLoadingSysInfo(false);
   }
 
-  async function loadSchedules() {
-    setLoadingSchedules(true);
-    const rules = await fetchSchedule(device.id);
-    setSchedules(rules);
-    setLoadingSchedules(false);
+  async function loadEnergyData() {
+    setEnergyLoading(true);
+    try {
+      const now = selectedMonth;
+      const data = await fetchEnergyData(device.id, now.getFullYear(), now.getMonth() + 1);
+      setEnergyHistory(data);
+    } catch {
+      // ignore
+    }
+    setEnergyLoading(false);
   }
+
+  function handleMonthChange(date: Date) {
+    setSelectedMonth(date);
+  }
+
+  useEffect(() => {
+    if (activeTab === 'energy') {
+      loadEnergyData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, activeTab]);
 
   async function handleRename() {
     if (!editName.trim()) return;
@@ -70,55 +133,178 @@ export default function DeviceDetails({
     setIsRenaming(false);
   }
 
-  async function handleLedToggle(value: boolean) {
-    try {
-      await onSetLedState(device.id, value);
-      setLedState(value);
-    } catch {
-      // revert
+  function renderTabContent() {
+    switch (activeTab) {
+      case 'info':
+        return renderInfoTab();
+      case 'energy':
+        return (
+          <EnergyMonitor
+            deviceId={device.id}
+            realtimeData={emeterData}
+            timeUsage={timeUsage}
+            energyHistory={energyHistory}
+            energyLoading={energyLoading}
+            selectedMonth={selectedMonth}
+            onMonthChange={handleMonthChange}
+            fetchEnergyData={fetchEnergyData}
+          />
+        );
+      case 'schedules':
+        return (
+          <ScheduleList
+            deviceId={device.id}
+            fetchScheduleRules={fetchScheduleRules}
+            addSchedule={addSchedule}
+            editSchedule={editSchedule}
+            deleteSchedule={deleteSchedule}
+            toggleAllSchedules={toggleAllSchedules}
+          />
+        );
+      case 'timer':
+        return (
+          <CountdownTimer
+            deviceId={device.id}
+            fetchCountdownRules={fetchCountdownRules}
+            addCountdown={addCountdown}
+            deleteCountdown={deleteCountdown}
+          />
+        );
+      case 'away':
+        return (
+          <AwayMode
+            deviceId={device.id}
+            fetchAwayModeRules={fetchAwayModeRules}
+            addAwayMode={addAwayMode}
+            deleteAwayMode={deleteAwayMode}
+          />
+        );
     }
   }
 
-  async function handleReboot() {
-    if (!confirm('Are you sure you want to reboot this device? It will be unavailable for ~10 seconds.')) return;
-    setIsRebooting(true);
-    try {
-      await onReboot(device.id);
-      setRebootCountdown(15);
-    } catch {
-      // ignore
-    }
-    setIsRebooting(false);
-  }
+  function renderInfoTab() {
+    return (
+      <div className="space-y-6">
+        {/* Device name */}
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1">Name</label>
+          {isEditing ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                autoFocus
+                maxLength={32}
+              />
+              <button
+                onClick={handleRename}
+                disabled={isRenaming}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg disabled:opacity-50"
+              >
+                {isRenaming ? '...' : '✓'}
+              </button>
+              <button
+                onClick={() => { setIsEditing(false); setEditName(device.name); }}
+                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-medium">{device.name}</span>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-gray-400 hover:text-white text-sm transition-colors"
+                title="Rename"
+              >
+                ✏️
+              </button>
+            </div>
+          )}
+        </div>
 
-  // Countdown for reboot
-  useEffect(() => {
-    if (rebootCountdown === null) return;
-    if (rebootCountdown <= 0) {
-      setRebootCountdown(null);
-      loadSysInfo();
-      return;
-    }
-    const timer = setTimeout(() => setRebootCountdown(rebootCountdown - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [rebootCountdown]);
+        {/* Status */}
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Status</label>
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${device.online ? 'bg-emerald-400 pulse-green' : 'bg-gray-600'}`} />
+            <span className="text-sm">
+              {device.relayState ? (
+                <span className="text-emerald-400 font-medium">Power On</span>
+              ) : (
+                <span className="text-gray-400">Power Off</span>
+              )}
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="text-sm text-gray-400">
+              {device.online ? 'Online' : 'Offline'}
+            </span>
+          </div>
+        </div>
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        {/* Time usage */}
+        {timeUsage && (
+          <div>
+            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Runtime</label>
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { label: 'Today', value: timeUsage.today, icon: '⏱️' },
+                { label: 'Past 7d', value: timeUsage.past7, icon: '📅' },
+                { label: 'Past 30d', value: timeUsage.past30, icon: '📊' },
+              ] as const).map(({ label, value, icon }) => (
+                <div key={label} className="bg-gray-800/50 rounded-lg p-3 text-center">
+                  <div className="text-sm mb-0.5">{icon}</div>
+                  <div className="text-sm font-bold text-blue-400">{formatRuntime(value)}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-  function formatRepeat(repeat: number): string {
-    if (repeat === 0) return 'Once';
-    if (repeat === 127) return 'Every day';
-    const days: string[] = [];
-    for (let i = 0; i < 7; i++) {
-      if (repeat & (1 << i)) days.push(dayNames[i]!);
-    }
-    return days.join(', ');
-  }
+        {/* Device info grid */}
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Device Info</label>
+          <div className="bg-gray-800/50 rounded-lg divide-y divide-gray-700">
+            {([
+              ['Model', device.model],
+              ['IP Address', device.host],
+              ['MAC Address', device.mac],
+              ['Type', device.deviceType],
+              ['Software', device.softwareVersion || '—'],
+              ['Hardware', device.hardwareVersion || '—'],
+            ] as const).map(([label, value]) => (
+              <div key={String(label)} className="flex justify-between items-center px-4 py-2.5">
+                <span className="text-xs text-gray-400">{label}</span>
+                <span className="text-sm font-mono">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-  function formatMinutes(minutes: number): string {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        {/* Raw sysinfo (collapsible) */}
+        <details className="group">
+          <summary className="text-xs text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-300 transition-colors">
+            Raw System Info
+          </summary>
+          <div className="mt-2 bg-gray-800/50 rounded-lg p-3 overflow-x-auto">
+            {loadingSysInfo ? (
+              <p className="text-xs text-gray-500">Loading...</p>
+            ) : sysInfo ? (
+              <pre className="text-[11px] text-gray-400 font-mono whitespace-pre-wrap">
+                {JSON.stringify(sysInfo, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-xs text-gray-500">Unavailable</p>
+            )}
+          </div>
+        </details>
+      </div>
+    );
   }
 
   return (
@@ -127,12 +313,12 @@ export default function DeviceDetails({
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md bg-gray-900 border-l border-gray-800 slide-in-right overflow-y-auto">
+      <div className="relative w-full max-w-md bg-gray-900 border-l border-gray-800 slide-in-right flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between z-10">
+        <div className="shrink-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🔌</span>
-            <h2 className="text-lg font-semibold">Device Details</h2>
+            <h2 className="text-lg font-semibold truncate">{device.name}</h2>
           </div>
           <button
             onClick={onClose}
@@ -142,216 +328,41 @@ export default function DeviceDetails({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Device name */}
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1">Name</label>
-            {isEditing ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                  autoFocus
-                  maxLength={32}
-                />
-                <button
-                  onClick={handleRename}
-                  disabled={isRenaming}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg disabled:opacity-50"
-                >
-                  {isRenaming ? '...' : '✓'}
-                </button>
-                <button
-                  onClick={() => { setIsEditing(false); setEditName(device.name); }}
-                  className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-medium">{device.name}</span>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="text-gray-400 hover:text-white text-sm transition-colors"
-                  title="Rename"
-                >
-                  ✏️
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Status</label>
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${device.online ? 'bg-emerald-400 pulse-green' : 'bg-gray-600'}`} />
-              <span className="text-sm">
-                {device.relayState ? (
-                  <span className="text-emerald-400 font-medium">Power On</span>
-                ) : (
-                  <span className="text-gray-400">Power Off</span>
-                )}
-              </span>
-              <span className="text-gray-600">•</span>
-              <span className="text-sm text-gray-400">
-                {device.online ? 'Online' : 'Offline'}
-              </span>
-            </div>
-          </div>
-
-          {/* Device info grid */}
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Device Info</label>
-            <div className="bg-gray-800/50 rounded-lg divide-y divide-gray-700">
-              {[
-                ['Model', device.model],
-                ['IP Address', device.host],
-                ['Port', String(device.port)],
-                ['MAC Address', device.mac],
-                ['Type', device.deviceType],
-                ['Software', device.softwareVersion || '—'],
-                ['Hardware', device.hardwareVersion || '—'],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-gray-400">{label}</span>
-                  <span className="text-sm font-mono">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Energy monitoring */}
-          {device.supportsEmeter && emeterData && (
-            <div>
-              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">⚡ Energy Monitoring</label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Power', value: `${emeterData.power.toFixed(1)} W`, color: 'text-yellow-400' },
-                  { label: 'Voltage', value: `${emeterData.voltage.toFixed(1)} V`, color: 'text-blue-400' },
-                  { label: 'Current', value: `${emeterData.current.toFixed(3)} A`, color: 'text-purple-400' },
-                  { label: 'Total', value: `${emeterData.total.toFixed(3)} kWh`, color: 'text-emerald-400' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="bg-gray-800/50 rounded-lg p-3 text-center">
-                    <div className={`text-lg font-bold ${color}`}>{value}</div>
-                    <div className="text-xs text-gray-500 mt-1">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Children (multi-outlet) */}
-          {device.children && device.children.length > 0 && (
-            <div>
-              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Outlets</label>
-              <div className="space-y-2">
-                {device.children.map((child) => (
-                  <div key={child.id} className="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-2.5">
-                    <span className="text-sm">{child.name}</span>
-                    <span className={`text-xs font-medium ${child.state ? 'text-emerald-400' : 'text-gray-500'}`}>
-                      {child.state ? 'On' : 'Off'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Controls */}
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Controls</label>
-            <div className="space-y-3">
-              {/* LED toggle */}
-              <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium">LED Indicator</div>
-                  <div className="text-xs text-gray-500">
-                    {ledState ? 'LED on' : 'Night mode (LED off)'}
-                  </div>
-                </div>
-                <div
-                  className={`toggle-switch ${ledState ? 'on' : 'off'}`}
-                  onClick={() => handleLedToggle(!ledState)}
-                >
-                  <div className="toggle-knob" />
-                </div>
-              </div>
-
-              {/* Reboot button */}
+        {/* Tabs */}
+        <div className="shrink-0 border-b border-gray-800 overflow-x-auto">
+          <div className="flex px-4 gap-1">
+            {TABS.map((tab) => (
               <button
-                onClick={handleReboot}
-                disabled={isRebooting || rebootCountdown !== null}
-                className="w-full px-4 py-3 bg-gray-800/50 hover:bg-gray-800 rounded-lg text-sm font-medium text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  flex items-center gap-1.5 px-3 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === tab.id
+                    ? 'border-emerald-500 text-emerald-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'}
+                `}
               >
-                {rebootCountdown !== null
-                  ? `Rebooting... ${rebootCountdown}s`
-                  : isRebooting
-                    ? 'Rebooting...'
-                    : '🔄 Reboot Device'}
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
               </button>
-            </div>
+            ))}
           </div>
+        </div>
 
-          {/* Schedules */}
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">
-              Schedules
-              {loadingSchedules && <span className="ml-2 text-gray-600">Loading...</span>}
-            </label>
-            {schedules.length === 0 && !loadingSchedules ? (
-              <p className="text-sm text-gray-500 py-2">No schedules configured.</p>
-            ) : (
-              <div className="space-y-2">
-                {schedules.map((rule, idx) => (
-                  <div
-                    key={rule.id ?? idx}
-                    className="bg-gray-800/50 rounded-lg px-4 py-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">
-                        {rule.sact === 'on' ? '🟢 Turn On' : '🔴 Turn Off'}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        rule.enable ? 'bg-emerald-900/50 text-emerald-400' : 'bg-gray-700 text-gray-500'
-                      }`}>
-                        {rule.enable ? 'Active' : 'Disabled'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1 space-y-0.5">
-                      <div>⏰ {formatMinutes(rule.smin)}</div>
-                      <div>📅 {formatRepeat(rule.repeat)}</div>
-                      {rule.name && rule.name !== '' && <div>📝 {rule.name}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Raw sysinfo (collapsible) */}
-          <details className="group">
-            <summary className="text-xs text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-300 transition-colors">
-              Raw System Info
-            </summary>
-            <div className="mt-2 bg-gray-800/50 rounded-lg p-3 overflow-x-auto">
-              {loadingSysInfo ? (
-                <p className="text-xs text-gray-500">Loading...</p>
-              ) : sysInfo ? (
-                <pre className="text-[11px] text-gray-400 font-mono whitespace-pre-wrap">
-                  {JSON.stringify(sysInfo, null, 2)}
-                </pre>
-              ) : (
-                <p className="text-xs text-gray-500">Unavailable</p>
-              )}
-            </div>
-          </details>
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {renderTabContent()}
         </div>
       </div>
     </div>
   );
+}
+
+function formatRuntime(minutesStr: string): string {
+  const totalMin = parseInt(minutesStr, 10) || 0;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }

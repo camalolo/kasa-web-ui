@@ -1,6 +1,6 @@
 // src/hooks/useDevices.ts
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Device, EmeterData, ScheduleRule } from '../types/device';
+import type { Device, EmeterData, EnergyData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
 import * as api from '../api/client';
 import { encrypt, decrypt } from '../utils/crypto';
 
@@ -24,7 +24,22 @@ export interface UseDevicesReturn {
   setPowerState: (id: string, value: boolean) => Promise<void>;
   renameDevice: (id: string, alias: string) => Promise<void>;
   refreshEmeter: (id: string) => Promise<EmeterData | null>;
-  fetchSchedule: (id: string) => Promise<ScheduleRule[]>;
+  // Schedule CRUD
+  fetchScheduleRules: (id: string) => Promise<ScheduleRulesResponse>;
+  addSchedule: (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
+  editSchedule: (id: string, ruleId: string, updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }) => Promise<void>;
+  deleteSchedule: (id: string, ruleId: string) => Promise<void>;
+  toggleAllSchedules: (id: string, enable: boolean) => Promise<void>;
+  // Countdown
+  fetchCountdownRules: (id: string) => Promise<CountdownRulesResponse>;
+  addCountdown: (id: string, delaySeconds: number, turnOn: boolean) => Promise<void>;
+  deleteCountdown: (id: string, ruleId: string) => Promise<void>;
+  // Away mode
+  fetchAwayModeRules: (id: string) => Promise<AwayModeRulesResponse>;
+  addAwayMode: (id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }) => Promise<void>;
+  deleteAwayMode: (id: string, ruleId: string) => Promise<void>;
+  // Energy history
+  fetchEnergyData: (id: string, year: number, month: number) => Promise<EnergyData>;
 }
 
 export function useDevices(): UseDevicesReturn {
@@ -180,11 +195,67 @@ export function useDevices(): UseDevicesReturn {
     }
   }, []);
 
-  const fetchSchedule = useCallback(async (id: string): Promise<ScheduleRule[]> => {
+  const fetchScheduleRules = useCallback(async (id: string): Promise<ScheduleRulesResponse> => {
     try {
-      return await api.getSchedule(id);
+      return await api.getScheduleRules(id);
     } catch {
-      return [];
+      return { enable: true, rule_list: [] };
+    }
+  }, []);
+
+  const addSchedule = useCallback(async (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => {
+    await api.addSchedule(id, rule);
+  }, []);
+
+  const editSchedule = useCallback(async (id: string, ruleId: string, updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }) => {
+    await api.editSchedule(id, ruleId, updates);
+  }, []);
+
+  const deleteSchedule = useCallback(async (id: string, ruleId: string) => {
+    await api.deleteSchedule(id, ruleId);
+  }, []);
+
+  const toggleAllSchedules = useCallback(async (id: string, enable: boolean) => {
+    await api.toggleAllSchedules(id, enable);
+  }, []);
+
+  const fetchCountdownRules = useCallback(async (id: string): Promise<CountdownRulesResponse> => {
+    try {
+      return await api.getCountdownRules(id);
+    } catch {
+      return { enable: true, rule_list: [] };
+    }
+  }, []);
+
+  const addCountdown = useCallback(async (id: string, delaySeconds: number, turnOn: boolean) => {
+    await api.addCountdown(id, delaySeconds, turnOn);
+  }, []);
+
+  const deleteCountdown = useCallback(async (id: string, ruleId: string) => {
+    await api.deleteCountdown(id, ruleId);
+  }, []);
+
+  const fetchAwayModeRules = useCallback(async (id: string): Promise<AwayModeRulesResponse> => {
+    try {
+      return await api.getAwayModeRules(id);
+    } catch {
+      return { enable: true, rule_list: [] };
+    }
+  }, []);
+
+  const addAwayMode = useCallback(async (id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }) => {
+    await api.addAwayMode(id, rule);
+  }, []);
+
+  const deleteAwayMode = useCallback(async (id: string, ruleId: string) => {
+    await api.deleteAwayMode(id, ruleId);
+  }, []);
+
+  const fetchEnergyData = useCallback(async (id: string, year: number, month: number): Promise<EnergyData> => {
+    try {
+      return await api.getEnergyData(id, year, month);
+    } catch {
+      return { day_list: [], month_list: [] };
     }
   }, []);
 
@@ -234,6 +305,17 @@ export function useDevices(): UseDevicesReturn {
     setPowerState,
     renameDevice,
     refreshEmeter,
-    fetchSchedule,
+    fetchScheduleRules,
+    addSchedule,
+    editSchedule,
+    deleteSchedule,
+    toggleAllSchedules,
+    fetchCountdownRules,
+    addCountdown,
+    deleteCountdown,
+    fetchAwayModeRules,
+    addAwayMode,
+    deleteAwayMode,
+    fetchEnergyData,
   };
 }

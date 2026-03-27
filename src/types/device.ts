@@ -62,18 +62,87 @@ export interface EmeterStatEntry {
   value: number;   // Wh or kWh depending on context
 }
 
-/** Schedule rule from plug.schedule */
-export interface ScheduleRule {
+/** Tapo schedule rule */
+export interface TapoScheduleRule {
   id: string;
   name: string;
   enable: boolean;
-  type: string;    // usually 'schedule'
-  sact: string;    // action: 'on', 'off'
-  smin: number;    // minutes from midnight
+  smin: number;
+  sact: string;
   eact?: string;
   emin?: number;
-  repeat: number;  // bitmask for days of week
-  // raw data for anything else
+  repeat: number[];
+  /** Keep raw data for any extra fields */
+  [key: string]: unknown;
+}
+
+/** Countdown timer rule */
+export interface CountdownRule {
+  id: string;
+  enable: boolean;
+  delay: number;
+  remain: number;
+  desired_states: { on: boolean };
+  [key: string]: unknown;
+}
+
+/** Away mode (anti-theft) rule */
+export interface AwayModeRule {
+  id: string;
+  enable: boolean;
+  frequency: number;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  [key: string]: unknown;
+}
+
+/** Energy daily data point */
+export interface EnergyDayData {
+  day: number;
+  time: string;
+  value: number;
+}
+
+/** Energy monthly data point */
+export interface EnergyMonthData {
+  month: number;
+  year: number;
+  time: string;
+  value: number;
+}
+
+/** Energy history response */
+export interface EnergyData {
+  day_list: EnergyDayData[];
+  month_list: EnergyMonthData[];
+}
+
+/** Device time usage info (from getDeviceInfo) */
+export interface TimeUsage {
+  today: string;
+  past7: string;
+  past30: string;
+}
+
+/** Schedule rules response */
+export interface ScheduleRulesResponse {
+  enable: boolean;
+  rule_list: TapoScheduleRule[];
+  [key: string]: unknown;
+}
+
+/** Countdown rules response */
+export interface CountdownRulesResponse {
+  enable: boolean;
+  rule_list: CountdownRule[];
+  [key: string]: unknown;
+}
+
+/** Away mode rules response */
+export interface AwayModeRulesResponse {
+  enable: boolean;
+  rule_list: AwayModeRule[];
   [key: string]: unknown;
 }
 

@@ -21,7 +21,18 @@ function App() {
     refreshDevices,
     togglePower,
     renameDevice,
-    fetchSchedule,
+    fetchScheduleRules,
+    addSchedule,
+    editSchedule,
+    deleteSchedule,
+    toggleAllSchedules,
+    fetchCountdownRules,
+    addCountdown,
+    deleteCountdown,
+    fetchAwayModeRules,
+    addAwayMode,
+    deleteAwayMode,
+    fetchEnergyData,
   } = useDevices();
 
   if (initializing) {
@@ -68,12 +79,21 @@ function App() {
           device={selectedDevice}
           onClose={() => selectDevice(null)}
           onRename={renameDevice}
-          onSetLedState={async () => {}}
-          onReboot={async () => {}}
-          fetchSchedule={fetchSchedule}
           emeterData={selectedDeviceId && emeterData[selectedDeviceId]
             ? emeterData[selectedDeviceId]
             : null}
+          fetchScheduleRules={fetchScheduleRules}
+          addSchedule={addSchedule}
+          editSchedule={editSchedule}
+          deleteSchedule={deleteSchedule}
+          toggleAllSchedules={toggleAllSchedules}
+          fetchCountdownRules={fetchCountdownRules}
+          addCountdown={addCountdown}
+          deleteCountdown={deleteCountdown}
+          fetchAwayModeRules={fetchAwayModeRules}
+          addAwayMode={addAwayMode}
+          deleteAwayMode={deleteAwayMode}
+          fetchEnergyData={fetchEnergyData}
         />
       )}
     </Layout>

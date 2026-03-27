@@ -14,6 +14,18 @@ import {
   getEmeter,
   getSchedule,
   getSysInfo,
+  getScheduleRules,
+  addScheduleRule,
+  editScheduleRule,
+  deleteScheduleRules,
+  toggleAllSchedules,
+  getCountdownRules,
+  addCountdownRule,
+  deleteCountdownRules,
+  getAwayModeRules,
+  addAwayModeRule,
+  deleteAwayModeRules,
+  getEnergyData,
 } from '../kasa.js';
 
 const router = Router();
@@ -146,6 +158,149 @@ router.get('/devices/:id/schedule', async (req, res) => {
     res.json(rules);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+// Schedule Rules (Tapo)
+router.get('/devices/:id/schedules', async (req, res) => {
+  try {
+    const rules = await getScheduleRules(req.params.id);
+    res.json(rules);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get schedules' });
+  }
+});
+
+router.post('/devices/:id/schedules', async (req, res) => {
+  try {
+    const { name, smin, sact, eact, emin, repeat } = req.body;
+    if (typeof name !== 'string' || typeof smin !== 'number' || typeof sact !== 'string' || !Array.isArray(repeat)) {
+      res.status(400).json({ error: 'name, smin, sact, and repeat are required' });
+      return;
+    }
+    await addScheduleRule(req.params.id, { name, smin, sact, eact, emin, repeat });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to add schedule' });
+  }
+});
+
+router.put('/devices/:id/schedules/:ruleId', async (req, res) => {
+  try {
+    const updates: Record<string, unknown> = {};
+    if (typeof req.body.name === 'string') updates.name = req.body.name;
+    if (typeof req.body.smin === 'number') updates.smin = req.body.smin;
+    if (typeof req.body.sact === 'string') updates.sact = req.body.sact;
+    if (typeof req.body.eact === 'string') updates.eact = req.body.eact;
+    if (typeof req.body.emin === 'number') updates.emin = req.body.emin;
+    if (Array.isArray(req.body.repeat)) updates.repeat = req.body.repeat;
+    if (typeof req.body.enable === 'boolean') updates.enable = req.body.enable;
+    await editScheduleRule(req.params.id, req.params.ruleId, updates);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to edit schedule' });
+  }
+});
+
+router.delete('/devices/:id/schedules/:ruleId', async (req, res) => {
+  try {
+    await deleteScheduleRules(req.params.id, [req.params.ruleId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete schedule' });
+  }
+});
+
+router.put('/devices/:id/schedules-enabled', async (req, res) => {
+  try {
+    const { enable } = req.body;
+    if (typeof enable !== 'boolean') {
+      res.status(400).json({ error: 'enable must be a boolean' });
+      return;
+    }
+    await toggleAllSchedules(req.params.id, enable);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to toggle schedules' });
+  }
+});
+
+// Countdown Timer
+router.get('/devices/:id/countdown', async (req, res) => {
+  try {
+    const rules = await getCountdownRules(req.params.id);
+    res.json(rules);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get countdown rules' });
+  }
+});
+
+router.post('/devices/:id/countdown', async (req, res) => {
+  try {
+    const { delay, desired_state } = req.body;
+    if (typeof delay !== 'number' || delay < 1) {
+      res.status(400).json({ error: 'delay must be a positive number (seconds)' });
+      return;
+    }
+    const turnOn = desired_state === 'on';
+    await addCountdownRule(req.params.id, delay, turnOn);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to add countdown' });
+  }
+});
+
+router.delete('/devices/:id/countdown/:ruleId', async (req, res) => {
+  try {
+    await deleteCountdownRules(req.params.id, [req.params.ruleId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete countdown' });
+  }
+});
+
+// Away Mode (Anti-theft)
+router.get('/devices/:id/away-mode', async (req, res) => {
+  try {
+    const rules = await getAwayModeRules(req.params.id);
+    res.json(rules);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get away mode rules' });
+  }
+});
+
+router.post('/devices/:id/away-mode', async (req, res) => {
+  try {
+    const { frequency, start_time, end_time, duration } = req.body;
+    if (typeof frequency !== 'number' || typeof start_time !== 'number' || typeof end_time !== 'number' || typeof duration !== 'number') {
+      res.status(400).json({ error: 'frequency, start_time, end_time, and duration are required' });
+      return;
+    }
+    await addAwayModeRule(req.params.id, { frequency, start_time, end_time, duration });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to add away mode rule' });
+  }
+});
+
+router.delete('/devices/:id/away-mode/:ruleId', async (req, res) => {
+  try {
+    await deleteAwayModeRules(req.params.id, [req.params.ruleId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete away mode rule' });
+  }
+});
+
+// Energy Data (daily/monthly history)
+router.get('/devices/:id/energy-data', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
+    const month = parseInt(req.query.month as string, 10) || (new Date().getMonth() + 1);
+    const data = await getEnergyData(req.params.id, year, month);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get energy data' });
   }
 });
 

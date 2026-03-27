@@ -59,3 +59,74 @@ body {
 .slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* Tab indicator animation */
+@keyframes tab-indicator {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+/* Scrollbar styling for dark theme panels */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Skeleton loading animation variant */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Small toggle switch (for compact UIs) */
+.toggle-switch-sm {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  transition: background-color 0.3s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toggle-switch-sm.on {
+  background-color: #22c55e;
+}
+.toggle-switch-sm.off {
+  background-color: #374151;
+}
+.toggle-switch-sm .toggle-knob-sm {
+  position: absolute;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.toggle-switch-sm.on .toggle-knob-sm {
+  transform: translateX(18px);
+}
+.toggle-switch-sm.off .toggle-knob-sm {
+  transform: translateX(2px);
+}
+
+/* Energy bar chart */
+.energy-bar {
+  transition: height 0.3s ease-out;
+  min-height: 2px;
+}
