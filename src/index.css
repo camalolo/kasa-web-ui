@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom toggle switch */
+.toggle-switch {
+  position: relative;
+  width: 56px;
+  height: 28px;
+  border-radius: 14px;
+  transition: background-color 0.3s ease;
+  cursor: pointer;
+}
+.toggle-switch.on {
+  background-color: #22c55e;
+}
+.toggle-switch.off {
+  background-color: #374151;
+}
+.toggle-switch .toggle-knob {
+  position: absolute;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.toggle-switch.on .toggle-knob {
+  transform: translateX(28px);
+}
+.toggle-switch.off .toggle-knob {
+  transform: translateX(2px);
+}
+
+/* Pulse animation for online indicator */
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.pulse-green {
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* Slide-in animation for details panel */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
