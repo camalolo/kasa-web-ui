@@ -11,8 +11,8 @@ interface DeviceDetailsProps {
   onRename: (id: string, alias: string) => Promise<void>;
   emeterData: EmeterData | null;
   fetchScheduleRules: (id: string) => Promise<ScheduleRulesResponse>;
-  addSchedule: (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
-  editSchedule: (id: string, ruleId: string, updates: Record<string, unknown>) => Promise<void>;
+  addSchedule: (id: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
+  editSchedule: (id: string, ruleId: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[]; enable: boolean }) => Promise<void>;
   deleteSchedule: (id: string, ruleId: string) => Promise<void>;
   toggleAllSchedules: (id: string, enable: boolean) => Promise<void>;
   fetchCountdownRules: (id: string) => Promise<CountdownRulesResponse>;

@@ -26,8 +26,8 @@ export interface UseDevicesReturn {
   refreshEmeter: (id: string) => Promise<EmeterData | null>;
   // Schedule CRUD
   fetchScheduleRules: (id: string) => Promise<ScheduleRulesResponse>;
-  addSchedule: (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
-  editSchedule: (id: string, ruleId: string, updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }) => Promise<void>;
+  addSchedule: (id: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => Promise<void>;
+  editSchedule: (id: string, ruleId: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[]; enable: boolean }) => Promise<void>;
   deleteSchedule: (id: string, ruleId: string) => Promise<void>;
   toggleAllSchedules: (id: string, enable: boolean) => Promise<void>;
   // Countdown
@@ -201,12 +201,12 @@ export function useDevices(): UseDevicesReturn {
     }
   }, []);
 
-  const addSchedule = useCallback(async (id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => {
+  const addSchedule = useCallback(async (id: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }) => {
     await api.addSchedule(id, rule);
   }, []);
 
-  const editSchedule = useCallback(async (id: string, ruleId: string, updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }) => {
-    await api.editSchedule(id, ruleId, updates);
+  const editSchedule = useCallback(async (id: string, ruleId: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[]; enable: boolean }) => {
+    await api.editSchedule(id, ruleId, rule);
   }, []);
 
   const deleteSchedule = useCallback(async (id: string, ruleId: string) => {

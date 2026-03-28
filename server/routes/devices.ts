@@ -17,8 +17,8 @@ import {
   getScheduleRules,
   addScheduleRule,
   editScheduleRule,
-  deleteScheduleRules,
   toggleAllSchedules,
+  removeScheduleRule,
   getCountdownRules,
   addCountdownRule,
   deleteCountdownRules,
@@ -172,12 +172,12 @@ router.get('/devices/:id/schedules', async (req, res) => {
 
 router.post('/devices/:id/schedules', async (req, res) => {
   try {
-    const { name, smin, sact, eact, emin, repeat } = req.body;
-    if (typeof name !== 'string' || typeof smin !== 'number' || typeof sact !== 'string' || !Array.isArray(repeat)) {
-      res.status(400).json({ error: 'name, smin, sact, and repeat are required' });
+    const { smin, sact, eact, emin, repeat } = req.body;
+    if (typeof smin !== 'number' || typeof sact !== 'string' || !Array.isArray(repeat)) {
+      res.status(400).json({ error: 'smin, sact, and repeat are required' });
       return;
     }
-    await addScheduleRule(req.params.id, { name, smin, sact, eact, emin, repeat });
+    await addScheduleRule(req.params.id, { smin, sact, eact, emin, repeat });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to add schedule' });
@@ -186,15 +186,12 @@ router.post('/devices/:id/schedules', async (req, res) => {
 
 router.put('/devices/:id/schedules/:ruleId', async (req, res) => {
   try {
-    const updates: Record<string, unknown> = {};
-    if (typeof req.body.name === 'string') updates.name = req.body.name;
-    if (typeof req.body.smin === 'number') updates.smin = req.body.smin;
-    if (typeof req.body.sact === 'string') updates.sact = req.body.sact;
-    if (typeof req.body.eact === 'string') updates.eact = req.body.eact;
-    if (typeof req.body.emin === 'number') updates.emin = req.body.emin;
-    if (Array.isArray(req.body.repeat)) updates.repeat = req.body.repeat;
-    if (typeof req.body.enable === 'boolean') updates.enable = req.body.enable;
-    await editScheduleRule(req.params.id, req.params.ruleId, updates);
+    const { smin, sact, eact, emin, repeat, enable } = req.body;
+    if (typeof smin !== 'number' || typeof sact !== 'string' || !Array.isArray(repeat) || typeof enable !== 'boolean') {
+      res.status(400).json({ error: 'smin, sact, repeat, and enable are required' });
+      return;
+    }
+    await editScheduleRule(req.params.id, req.params.ruleId, { smin, sact, eact, emin, repeat, enable });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to edit schedule' });
@@ -203,7 +200,7 @@ router.put('/devices/:id/schedules/:ruleId', async (req, res) => {
 
 router.delete('/devices/:id/schedules/:ruleId', async (req, res) => {
   try {
-    await deleteScheduleRules(req.params.id, [req.params.ruleId]);
+    await removeScheduleRule(req.params.id, req.params.ruleId);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete schedule' });

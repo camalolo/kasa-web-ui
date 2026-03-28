@@ -91,14 +91,14 @@ export async function getScheduleRules(id: string): Promise<ScheduleRulesRespons
   return request<ScheduleRulesResponse>(`/devices/${encodeURIComponent(id)}/schedules`);
 }
 
-export async function addSchedule(id: string, rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Promise<{ ok: boolean }> {
+export async function addSchedule(id: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules`, {
     method: 'POST',
     body: JSON.stringify(rule),
   });
 }
 
-export async function editSchedule(id: string, ruleId: string, rule: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean }): Promise<{ ok: boolean }> {
+export async function editSchedule(id: string, ruleId: string, rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[]; enable: boolean }): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/schedules/${encodeURIComponent(ruleId)}`, {
     method: 'PUT',
     body: JSON.stringify(rule),

@@ -383,10 +383,9 @@ async function getRawSession(deviceId: string) {
 
 // --- Schedules ---
 
-function mapUIToTapoSchedule(rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Record<string, unknown> {
+function mapUIToTapoSchedule(rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Record<string, unknown> {
   const now = new Date();
   const tapo: Record<string, unknown> = {
-    name: rule.name,
     s_type: 'normal',
     e_type: 'normal',
     s_min: rule.smin,
@@ -417,6 +416,19 @@ function mapUIToTapoSchedule(rule: { name: string; smin: number; sact: string; e
     tapo.mode = 'once';
   }
 
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fmtMin = (v: number) => `${Math.floor(v / 60).toString().padStart(2, '0')}:${(v % 60).toString().padStart(2, '0')}`;
+  const actionLabel = rule.sact === 'on' ? 'On' : 'Off';
+  let dayLabel = '';
+  if (rule.repeat.length === 0) {
+    dayLabel = 'Once';
+  } else if (rule.repeat.length === 7) {
+    dayLabel = 'Daily';
+  } else {
+    dayLabel = rule.repeat.map((d) => DAY_LABELS[d]).join(', ');
+  }
+  tapo.name = `${fmtMin(rule.smin)} ${actionLabel} (${dayLabel})`;
+
   return tapo;
 }
 
@@ -434,12 +446,31 @@ function mapTapoScheduleToUI(rule: Record<string, unknown>): Record<string, unkn
   } else {
     repeat = [];
   }
+
+  // Auto-generate a display name from schedule data
+  const smin = (rule['s_min'] ?? rule['smin']) as number | undefined;
+  const emin = (rule['e_min'] ?? rule['emin']) as number | undefined;
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fmtMin = (v: number) => `${Math.floor(v / 60).toString().padStart(2, '0')}:${(v % 60).toString().padStart(2, '0')}`;
+  const startLabel = smin !== undefined ? `${fmtMin(smin)} ${sact === 'on' ? 'On' : 'Off'}` : '';
+  const endLabel = (eact !== undefined && eact !== 'none' && emin !== undefined) ? ` → ${fmtMin(emin)} ${eact === 'on' ? 'On' : 'Off'}` : '';
+  let dayLabel = '';
+  if (repeat.length === 0) {
+    dayLabel = 'Once';
+  } else if (repeat.length === 7) {
+    dayLabel = 'Daily';
+  } else {
+    dayLabel = repeat.map((d) => DAY_LABELS[d]).join(', ');
+  }
+  const label = `${startLabel}${endLabel} (${dayLabel})`;
+
   return {
     ...rule,
-    smin: rule['s_min'] ?? rule['smin'],
+    name: label,
+    smin,
     sact,
     eact: eact === 'none' ? undefined : eact,
-    emin: rule['e_min'] ?? rule['emin'],
+    emin,
     repeat,
   };
 }
@@ -467,68 +498,114 @@ export async function getScheduleRules(deviceId: string): Promise<Record<string,
 
 export async function addScheduleRule(
   deviceId: string,
-  rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] },
+  rule: { smin: number; sact: string; eact?: string; emin?: number; repeat: number[] },
 ): Promise<void> {
   const session = await getRawSession(deviceId);
   const tapoRule = mapUIToTapoSchedule(rule);
   await session.send({
     method: 'add_schedule_rule',
-    params: {
-      schedule_rule: tapoRule,
-    },
+    params: tapoRule,
   });
 }
 
 export async function editScheduleRule(
   deviceId: string,
   ruleId: string,
-  updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean },
+  fullRule: {
+    smin: number;
+    sact: string;
+    eact?: string;
+    emin?: number;
+    repeat: number[];
+    enable: boolean;
+  },
 ): Promise<void> {
-  const tapoUpdates: Record<string, unknown> = { id: ruleId };
-  if (updates.name !== undefined) tapoUpdates.name = updates.name;
-  if (updates.smin !== undefined) tapoUpdates.s_min = updates.smin;
-  if (updates.sact !== undefined) tapoUpdates.desired_states = { on: updates.sact === 'on' };
-  if (updates.eact !== undefined) tapoUpdates.e_action = updates.eact;
-  if (updates.emin !== undefined) tapoUpdates.e_min = updates.emin;
-  if (updates.repeat !== undefined) {
-    if (updates.repeat.length > 0) {
-      let bitmask = 0;
-      for (const day of updates.repeat) {
-        bitmask |= (1 << day);
-      }
-      tapoUpdates.week_day = bitmask;
+  const tapoEdits: Record<string, unknown> = {
+    id: ruleId,
+    s_type: 'normal',
+    e_type: 'normal',
+    s_min: fullRule.smin,
+    e_min: fullRule.emin ?? 0,
+    desired_states: { on: fullRule.sact === 'on' },
+    enable: fullRule.enable,
+    e_action: (fullRule.eact !== undefined && fullRule.eact !== '' && fullRule.eact !== 'none') ? fullRule.eact : 'none',
+  };
+
+  if (fullRule.repeat.length > 0) {
+    let bitmask = 0;
+    for (const day of fullRule.repeat) {
+      bitmask |= (1 << day);
     }
+    tapoEdits.week_day = bitmask;
+    tapoEdits.mode = 'repeat';
+  } else {
+    tapoEdits.week_day = 0;
+    tapoEdits.mode = 'once';
   }
-  if (updates.enable !== undefined) tapoUpdates.enable = updates.enable;
+
+  // Auto-generate name
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fmtMin = (v: number) => `${Math.floor(v / 60).toString().padStart(2, '0')}:${(v % 60).toString().padStart(2, '0')}`;
+  const actionLabel = fullRule.sact === 'on' ? 'On' : 'Off';
+  let dayLabel = '';
+  if (fullRule.repeat.length === 0) {
+    dayLabel = 'Once';
+  } else if (fullRule.repeat.length === 7) {
+    dayLabel = 'Daily';
+  } else {
+    dayLabel = fullRule.repeat.map((d) => DAY_LABELS[d]).join(', ');
+  }
+  tapoEdits.name = `${fmtMin(fullRule.smin)} ${actionLabel} (${dayLabel})`;
 
   const session = await getRawSession(deviceId);
   await session.send({
     method: 'edit_schedule_rule',
-    params: {
-      schedule_rule: tapoUpdates,
-    },
-  });
-}
-
-export async function deleteScheduleRules(deviceId: string, ruleIds: string[]): Promise<void> {
-  const session = await getRawSession(deviceId);
-  await session.send({
-    method: 'delete_schedule_rules',
-    params: { id_list: ruleIds },
+    params: tapoEdits,
   });
 }
 
 export async function toggleAllSchedules(deviceId: string, enable: boolean): Promise<void> {
+  // Get current rules
   const session = await getRawSession(deviceId);
-  await session.send({
-    method: 'edit_schedule_rule',
-    params: {
-      schedule_rule: {
-        id: 'all',
-        enable,
-      },
-    },
+  const raw = await session.send({
+    method: 'get_schedule_rules',
+    params: { start_index: 0 },
   });
+  let payload: Record<string, unknown> = raw;
+  if (raw['result'] && typeof raw['result'] === 'object' && !Array.isArray(raw['result'])) {
+    payload = raw['result'] as Record<string, unknown>;
+  }
+  const ruleList = payload['rule_list'];
+  if (!Array.isArray(ruleList)) return;
+
+  // Edit each rule to toggle enable
+  for (const rule of ruleList) {
+    const r = rule as Record<string, unknown>;
+    const ruleId = r['id'] as string;
+    if (!ruleId || ruleId === 'all') continue;
+
+    const desired = r['desired_states'] as Record<string, unknown> | undefined;
+    const sact = desired?.['on'] === true ? 'on' : 'off';
+    const smin = (r['s_min'] ?? r['smin']) as number | undefined;
+    const emin = (r['e_min'] ?? r['emin']) as number | undefined;
+    const eact = r['e_action'] as string | undefined;
+    const weekDay = r['week_day'] as number | undefined;
+    let repeat: number[] = [];
+    if (typeof weekDay === 'number' && weekDay > 0) {
+      for (let i = 0; i < 7; i++) {
+        if (weekDay & (1 << i)) repeat.push(i);
+      }
+    }
+
+    await editScheduleRule(deviceId, ruleId, {
+      smin: smin ?? 0,
+      sact,
+      eact: eact === 'none' ? undefined : eact,
+      emin,
+      repeat,
+      enable,
+    });
+  }
 }
 
 // --- Countdown Timer ---
@@ -558,6 +635,14 @@ export async function deleteCountdownRules(deviceId: string, ruleIds: string[]):
   await session.send({
     method: 'delete_countdown_rules',
     params: { id_list: ruleIds },
+  });
+}
+
+export async function removeScheduleRule(deviceId: string, ruleId: string): Promise<void> {
+  const session = await getRawSession(deviceId);
+  await session.send({
+    method: 'remove_schedule_rules',
+    params: { remove_all: false, rule_list: [{ id: ruleId }] },
   });
 }
 
