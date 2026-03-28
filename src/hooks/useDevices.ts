@@ -50,6 +50,7 @@ export function useDevices(): UseDevicesReturn {
   const [error, setError] = useState<string | null>(null);
   const [emeterData, setEmeterData] = useState<Record<string, EmeterData>>({});
   const emeterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initRef = useRef(false);
 
   useEffect(() => {
@@ -193,6 +194,19 @@ export function useDevices(): UseDevicesReturn {
     }
   }, []);
 
+  const refreshDeviceState = useCallback(async (id: string) => {
+    try {
+      const info = await api.getDeviceInfo(id);
+      const rawOn = info['device_on'];
+      const deviceOn = rawOn === true || rawOn === 1;
+      setDevices((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, relayState: deviceOn } : d)),
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const fetchScheduleRules = useCallback(async (id: string): Promise<ScheduleRulesResponse> => {
     try {
       return await api.getScheduleRules(id);
@@ -250,19 +264,36 @@ export function useDevices(): UseDevicesReturn {
   }, []);
 
   useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (loggedIn && devices.length > 0) {
+      pollRef.current = setInterval(() => {
+        for (const d of devices) {
+          refreshDeviceState(d.id);
+        }
+      }, 5000);
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [loggedIn, devices.length, refreshDeviceState]);
+
+  useEffect(() => {
     if (emeterIntervalRef.current) {
       clearInterval(emeterIntervalRef.current);
       emeterIntervalRef.current = null;
     }
 
     if (selectedDeviceId) {
-      const device = devices.find((d) => d.id === selectedDeviceId);
-      if (device?.supportsEmeter) {
+      refreshEmeter(selectedDeviceId);
+      emeterIntervalRef.current = setInterval(() => {
         refreshEmeter(selectedDeviceId);
-        emeterIntervalRef.current = setInterval(() => {
-          refreshEmeter(selectedDeviceId);
-        }, 5000);
-      }
+      }, 5000);
     }
 
     return () => {
@@ -271,7 +302,7 @@ export function useDevices(): UseDevicesReturn {
         emeterIntervalRef.current = null;
       }
     };
-  }, [selectedDeviceId, devices, refreshEmeter]);
+  }, [selectedDeviceId, refreshEmeter]);
 
   const selectDevice = useCallback((id: string | null) => {
     setSelectedDeviceId(id);

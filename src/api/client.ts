@@ -51,7 +51,7 @@ export async function getDevice(id: string): Promise<Device> {
 }
 
 export async function getDeviceInfo(id: string): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}/info`);
+  return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}/info?t=${Date.now()}`);
 }
 
 // Power control

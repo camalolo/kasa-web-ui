@@ -36,8 +36,9 @@ interface LiveRule {
   _delete: () => void;
 }
 
-function TimerDisplay({ rule }: { rule: LiveRule }) {
+function TimerDisplay({ rule, onExpired }: { rule: LiveRule; onExpired: () => void }) {
   const [now, setNow] = useState(Date.now());
+  const expiredRef = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 5000);
@@ -47,6 +48,11 @@ function TimerDisplay({ rule }: { rule: LiveRule }) {
   const elapsed = Math.floor((now - rule.fetchedAt) / 1000);
   const remain = Math.max(rule.fetchedRemain - elapsed, 0);
   const progress = rule.delay > 0 ? ((rule.delay - remain) / rule.delay) * 100 : 0;
+
+  if (remain === 0 && !expiredRef.current) {
+    expiredRef.current = true;
+    onExpired();
+  }
 
   return (
     <div className="bg-gray-900/50 rounded-lg p-3">
@@ -334,7 +340,7 @@ export default function CountdownTimer({
           ) : (
             <div className="space-y-2">
               {rulesWithDelete.map((rule) => (
-                <TimerDisplay key={rule.id} rule={rule} />
+                <TimerDisplay key={rule.id} rule={rule} onExpired={loadRules} />
               ))}
             </div>
           )}
