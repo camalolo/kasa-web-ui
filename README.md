@@ -1,6 +1,6 @@
 # Kasa Web UI
 
-A web application for managing TP-Link Tapo smart plugs (KP125M and similar) on a local network.
+A web application for managing TP-Link Tapo smart plugs (KP125M) on a local network.
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
@@ -11,13 +11,15 @@ A web application for managing TP-Link Tapo smart plugs (KP125M and similar) on 
 
 ## Features
 
-- Auto-discover Tapo smart plugs on your LAN
-- Power toggle (on/off) with real-time state
-- Energy monitoring (power, voltage, current, total consumption)
-- Device information and management
+- Auto-discover Tapo smart plugs on your LAN via cloud device list + ARP resolution
+- Power toggle (on/off) with real-time state polling
+- Energy monitoring (current power, daily/monthly consumption, runtime)
+- Schedule management (create, edit, delete, toggle enable, bulk on/off)
+- Countdown timer (set a plug to turn on/off after a delay)
+- Away mode (anti-theft random on/off simulation)
+- Device rename
 - Encrypted credential persistence (session-scoped auto-login)
 - Dark theme UI, responsive grid layout
-- Network scanning progress indicator
 
 ## Prerequisites
 
@@ -25,14 +27,14 @@ A web application for managing TP-Link Tapo smart plugs (KP125M and similar) on 
 - TP-Link Tapo account (email + password)
 - Tapo smart plugs on the same LAN as the machine running the server
 
-## Getting Started
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-The Vite dev server binds to `0.0.0.0:5173` so you can access it from other machines on your LAN (e.g. `http://192.168.1.x:5173`). The Express backend listens on `localhost:3001` and Vite proxies `/api` and `/ws` requests to it.
+The Vite dev server binds to `0.0.0.0:5173`. The Express backend listens on `localhost:3001` and Vite proxies `/api` and `/ws` requests to it.
 
 ## Architecture
 
@@ -40,24 +42,28 @@ The Vite dev server binds to `0.0.0.0:5173` so you can access it from other mach
 kasa-web-ui/
 ├── server/                    # Express backend
 │   ├── index.ts               # Entry point (port 3001)
-│   ├── kasa.ts                # Tapo cloud login, local control, device management
+│   ├── kasa.ts                # Tapo cloud login, local control, schedules, timers
+│   ├── tapo-protocol.ts       # Raw KLASP + passthrough transport with session retry
+│   ├── logger.ts              # Structured logger with levels and context tags
+│   ├── request-logger.ts      # HTTP request logging middleware
 │   ├── routes/
-│   │   └── devices.ts         # REST API endpoints (auth + devices)
+│   │   └── devices.ts         # REST API endpoints
 │   └── ws.ts                  # WebSocket connection management
 ├── src/                       # React frontend
 │   ├── api/
 │   │   └── client.ts          # API client (fetch-based)
 │   ├── components/
-│   │   ├── DeviceCard.tsx     # Individual plug card
-│   │   ├── DeviceDetails.tsx  # Slide-out details panel
+│   │   ├── DeviceCard.tsx     # Plug card with power toggle
+│   │   ├── DeviceDetails.tsx  # Tabbed details panel (Info/Energy/Schedules/Timer/Away)
 │   │   ├── DeviceGrid.tsx     # Card grid with scan indicator
 │   │   ├── EnergyMonitor.tsx  # Energy data display
+│   │   ├── CountdownTimer.tsx # Countdown timer with local extrapolation
+│   │   ├── AwayMode.tsx       # Away mode (anti-theft) UI
+│   │   ├── ScheduleList.tsx   # Schedule CRUD UI
 │   │   ├── Layout.tsx         # App shell (header, error bar)
-│   │   ├── LoginForm.tsx      # TP-Link credential login
-│   │   └── ScheduleList.tsx   # Schedule list placeholder
+│   │   └── LoginForm.tsx      # TP-Link credential login
 │   ├── hooks/
-│   │   ├── useDevices.ts      # Main state management hook
-│   │   └── useWebSocket.ts    # Auto-reconnecting WebSocket
+│   │   └── useDevices.ts      # Main state management hook
 │   ├── types/
 │   │   └── device.ts          # Shared TypeScript types
 │   ├── utils/
@@ -67,52 +73,41 @@ kasa-web-ui/
 │   └── main.tsx               # React entry point
 ├── index.html
 ├── package.json
-├── tailwind.config.js
-├── postcss.config.js
 ├── vite.config.ts
 └── tsconfig.json
 ```
 
 ## How It Works
 
-1. **Authentication**: You sign in with your TP-Link Tapo cloud credentials. Credentials are encrypted with AES-256-CBC (using `aes-js`) and stored in `localStorage`. The encryption key lives in `sessionStorage` — so auto-login works on CTRL-F5 in the same tab but requires full login in a new tab.
+1. **Authentication**: Sign in with your TP-Link Tapo cloud credentials. Credentials are encrypted with AES-256-CBC (`aes-js`) and stored in `localStorage`. The encryption key lives in `sessionStorage` — auto-login works on CTRL-F5 in the same tab but requires full login in a new tab.
 
-2. **Device Discovery**: The backend calls the Tapo cloud API to list your registered devices, then resolves each device's MAC address to a LAN IP via `/proc/net/arp` (with broadcast ping fallback). It connects locally to each plug using the KLAP protocol to get real-time power state and energy data.
+2. **Device Discovery**: The backend calls the Tapo cloud API to list registered devices, then resolves each MAC to a LAN IP via `/proc/net/arp` (with broadcast ping fallback). It connects locally using the KLASP handshake protocol.
 
-3. **Local Control**: All device operations (power toggle, energy queries, device info) happen over your LAN via direct connections to the plugs. No cloud round-trip after initial discovery.
+3. **Local Control**: All operations (power toggle, energy queries, schedules, timers) go over your LAN via direct connections to the plugs. No cloud round-trip after initial discovery. Uses a custom KLASP transport for raw protocol access since the `tp-link-tapo-connect` library only exposes basic operations.
+
+4. **Real-time Updates**: Device power state polls every 5 seconds for all devices, keeping card toggles in sync with external changes (e.g. physical button, Kasa app).
 
 ## Production Build
 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USER/kasa-web-ui.git
+git clone https://github.com/camalolo/kasa-web-ui.git
 cd kasa-web-ui
 npm install
 ```
 
-### 2. Adjust configuration
-
-Edit `vite.config.ts` — set `outDir` to wherever you want the static files served from on your system:
-
-```ts
-build: {
-  outDir: '/path/to/your/web/root/plugs',
-  emptyOutDir: true,
-}
-```
-
-### 3. Build
+### 2. Build
 
 ```bash
-npm run build
+npm run build:prod
 ```
 
-This runs TypeScript checks (`tsc -b`) then Vite build. Output goes to the `outDir` you configured.
+This sets the output directory to `/home/www/public/camalolo/plugs/` and runs TypeScript checks + Vite build. Adjust the path in the `build:prod` script in `package.json` for your system.
 
-### 4. Configure nginx
+### 3. Configure nginx
 
-Add these location blocks inside your HTTPS server block (adjust paths to match your `outDir`):
+Add these location blocks inside your HTTPS server block:
 
 ```nginx
 location /plugs/api/ {
@@ -135,18 +130,12 @@ location /plugs/ws {
 }
 
 location /plugs/ {
-    alias /path/to/your/web/root/plugs/;
+    alias /home/www/public/camalolo/plugs/;
     try_files $uri $uri/ /plugs/index.html;
 }
 ```
 
-Reload nginx:
-
-```bash
-sudo nginx -t && sudo nginx -s reload
-```
-
-### 5. Set up systemd service
+### 4. Set up systemd service
 
 Create `/etc/systemd/system/kasa-web-ui.service`:
 
@@ -159,7 +148,7 @@ After=network.target
 ExecStart=/usr/local/bin/npx tsx server/index.ts
 User=YOUR_USER
 WorkingDirectory=/path/to/kasa-web-ui
-Environment="HOME=/home/YOUR_USER" "USER=YOUR_USER" "NODE_ENV=production" "PORT=3001"
+Environment="HOME=/home/YOUR_USER" "USER=YOUR_USER" "NODE_ENV=production" "PORT=3001" "LOG_LEVEL=debug"
 Restart=always
 RestartSec=5
 
@@ -167,33 +156,33 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Adjust `User`, `WorkingDirectory`, and paths as needed. Then:
-
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable kasa-web-ui.service
 sudo systemctl start kasa-web-ui.service
 ```
 
-Check status:
+### Deploy
 
 ```bash
-sudo systemctl status kasa-web-ui.service
+npm run build:prod
+sudo systemctl restart kasa-web-ui
 ```
 
 ## Script Reference
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start both backend and frontend concurrently |
+| `npm run dev` | Start backend + frontend concurrently |
 | `npm run dev:client` | Start Vite dev server only |
 | `npm run dev:server` | Start Express backend only (with tsx watch) |
-| `npm run build` | TypeScript check + Vite production build |
-| `npm run start` | Run the backend server (for use with systemd) |
-| `npm run preview` | Preview production build |
+| `npm run build:prod` | TypeScript check + production build |
+| `npm run start` | Run the backend server |
 
-## Notes
+## Known Limitations
 
-- Only tested with Tapo P110M/KP125M plugs. Other Tapo devices may work but are untested.
-- LED control, schedule management, and device reboot are not supported by the `tp-link-tapo-connect` library for local control.
-- The Vite proxy configuration forwards `/api` and `/ws` to the Express backend.
+- Only tested with KP125M plugs. Other Tapo devices may work but are untested.
+- Only one countdown timer at a time (device firmware limit).
+- No historical energy data from local protocol — only aggregate totals.
+- Device rename is local-only, not synced to cloud.
+- Away mode writes via local protocol are untested.
