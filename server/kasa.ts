@@ -612,10 +612,19 @@ export async function toggleAllSchedules(deviceId: string, enable: boolean): Pro
 
 export async function getCountdownRules(deviceId: string): Promise<Record<string, unknown>> {
   const session = await getRawSession(deviceId);
-  return session.send({
+  const raw = await session.send({
     method: 'get_countdown_rules',
     params: { start_index: 0 },
   });
+  let payload: Record<string, unknown> = raw;
+  if (raw['result'] && typeof raw['result'] === 'object' && !Array.isArray(raw['result'])) {
+    payload = raw['result'] as Record<string, unknown>;
+  }
+  const countdownRule = payload['countdown_rule'];
+  if (countdownRule && typeof countdownRule === 'object' && !Array.isArray(countdownRule)) {
+    payload = { ...payload, ...(countdownRule as Record<string, unknown>) };
+  }
+  return payload;
 }
 
 export async function addCountdownRule(deviceId: string, delaySeconds: number, turnOn: boolean): Promise<void> {
@@ -633,8 +642,8 @@ export async function addCountdownRule(deviceId: string, delaySeconds: number, t
 export async function deleteCountdownRules(deviceId: string, ruleIds: string[]): Promise<void> {
   const session = await getRawSession(deviceId);
   await session.send({
-    method: 'delete_countdown_rules',
-    params: { id_list: ruleIds },
+    method: 'remove_countdown_rules',
+    params: { remove_all: false, rule_list: ruleIds.map((id) => ({ id })) },
   });
 }
 

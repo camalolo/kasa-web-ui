@@ -120,7 +120,7 @@ export async function toggleAllSchedules(id: string, enable: boolean): Promise<{
 
 // --- Countdown Timer ---
 export async function getCountdownRules(id: string): Promise<CountdownRulesResponse> {
-  return request<CountdownRulesResponse>(`/devices/${encodeURIComponent(id)}/countdown`);
+  return request<CountdownRulesResponse>(`/devices/${encodeURIComponent(id)}/countdown?t=${Date.now()}`);
 }
 
 export async function addCountdown(id: string, delaySeconds: number, turnOn: boolean): Promise<{ ok: boolean }> {

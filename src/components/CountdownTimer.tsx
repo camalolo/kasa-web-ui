@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { CountdownRule, CountdownRulesResponse } from '../types/device';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { CountdownRulesResponse } from '../types/device';
 
 interface CountdownTimerProps {
   deviceId: string;
@@ -26,25 +26,101 @@ const PRESETS: { label: string; seconds: number }[] = [
   { label: '2h', seconds: 7200 },
 ];
 
+interface LiveRule {
+  id: string;
+  delay: number;
+  fetchedRemain: number;
+  fetchedAt: number;
+  turnOn: boolean;
+  enable: boolean;
+  _delete: () => void;
+}
+
+function TimerDisplay({ rule }: { rule: LiveRule }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsed = Math.floor((now - rule.fetchedAt) / 1000);
+  const remain = Math.max(rule.fetchedRemain - elapsed, 0);
+  const progress = rule.delay > 0 ? ((rule.delay - remain) / rule.delay) * 100 : 0;
+
+  return (
+    <div className="bg-gray-900/50 rounded-lg p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{rule.turnOn ? '🟢' : '🔴'}</span>
+          <span className={`text-sm font-medium ${rule.turnOn ? 'text-emerald-400' : 'text-orange-400'}`}>
+            Turn {rule.turnOn ? 'On' : 'Off'}
+          </span>
+          {rule.enable && (
+            <span className="text-[10px] bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded">
+              enabled
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => rule._delete()}
+          className="text-red-400 hover:text-red-300 text-xs transition-colors"
+        >
+          ✕ Cancel
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
+        <span>Delay: {formatSeconds(rule.delay)}</span>
+        {remain > 0 && (
+          <span className="font-mono text-sm text-gray-200">
+            {formatSeconds(remain)} remaining
+          </span>
+        )}
+      </div>
+
+      <div className="bg-gray-700 rounded-full h-2 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${
+            rule.turnOn ? 'bg-emerald-500' : 'bg-orange-500'
+          }`}
+          style={{ width: `${Math.min(progress, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function CountdownTimer({
   deviceId,
   fetchCountdownRules,
   addCountdown,
   deleteCountdown,
 }: CountdownTimerProps) {
-  const [rules, setRules] = useState<CountdownRule[]>([]);
+  const [rules, setRules] = useState<LiveRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [customMinutes, setCustomMinutes] = useState('');
   const [showCustom, setShowCustom] = useState<'on' | 'off' | null>(null);
+  const deleteRef = useRef<(ruleId: string) => void>(() => {});
 
   const loadRules = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const res = await fetchCountdownRules(deviceId);
-      setRules(res.rule_list ?? []);
+      const list = (res.rule_list ?? [])
+        .filter((r) => r.remain > 0)
+        .map((r): LiveRule => ({
+          id: r.id,
+          delay: r.delay,
+          fetchedRemain: r.remain,
+          fetchedAt: Date.now(),
+          turnOn: r.desired_states?.on ?? true,
+          enable: r.enable,
+          _delete: () => {},
+        }));
+      setRules(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load countdown rules');
     } finally {
@@ -53,8 +129,37 @@ export default function CountdownTimer({
   }, [deviceId, fetchCountdownRules]);
 
   useEffect(() => {
+    setLoading(true);
     loadRules();
   }, [loadRules]);
+
+  const syncRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (syncRef.current) {
+      clearInterval(syncRef.current);
+      syncRef.current = null;
+    }
+    if (rules.length > 0) {
+      syncRef.current = setInterval(loadRules, 30000);
+    }
+    return () => {
+      if (syncRef.current) {
+        clearInterval(syncRef.current);
+        syncRef.current = null;
+      }
+    };
+  }, [rules.length, loadRules]);
+
+  deleteRef.current = async (ruleId: string) => {
+    setError(null);
+    try {
+      await deleteCountdown(deviceId, ruleId);
+      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete countdown');
+    }
+  };
 
   const handleAdd = async (delaySeconds: number, turnOn: boolean) => {
     setAdding(true);
@@ -65,19 +170,10 @@ export default function CountdownTimer({
       setCustomMinutes('');
       await loadRules();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add countdown');
+      const msg = e instanceof Error ? e.message : 'Failed to add countdown';
+      setError(msg.includes('-1802') ? 'Only one timer allowed at a time. Cancel the existing timer first.' : msg);
     } finally {
       setAdding(false);
-    }
-  };
-
-  const handleDelete = async (ruleId: string) => {
-    setError(null);
-    try {
-      await deleteCountdown(deviceId, ruleId);
-      await loadRules();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete countdown');
     }
   };
 
@@ -86,6 +182,8 @@ export default function CountdownTimer({
     if (isNaN(minutes) || minutes < 1 || minutes > 1440) return;
     handleAdd(minutes * 60, turnOn);
   };
+
+  const rulesWithDelete = rules.map((r) => ({ ...r, _delete: () => deleteRef.current(r.id) }));
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-700 overflow-hidden">
@@ -112,6 +210,10 @@ export default function CountdownTimer({
         <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Quick Timer</h4>
 
+          {rules.length > 0 && (
+            <div className="text-xs text-yellow-500/80">A timer is already active. Cancel it to set a new one.</div>
+          )}
+
           <div>
             <span className="text-xs text-orange-400 mb-1.5 block font-medium">Turn Off after:</span>
             <div className="flex flex-wrap gap-2 items-center">
@@ -119,7 +221,7 @@ export default function CountdownTimer({
                 <button
                   key={`off-${label}`}
                   onClick={() => handleAdd(seconds, false)}
-                  disabled={adding}
+                  disabled={adding || rules.length > 0}
                   className="bg-gray-800 hover:bg-gray-700 text-sm px-3 py-2 rounded-lg disabled:opacity-50 transition-colors border border-gray-700"
                 >
                   {label}
@@ -130,7 +232,7 @@ export default function CountdownTimer({
                   setShowCustom(showCustom === 'off' ? null : 'off');
                   setCustomMinutes('');
                 }}
-                disabled={adding}
+                disabled={adding || rules.length > 0}
                 className="bg-gray-800 hover:bg-gray-700 text-sm px-3 py-2 rounded-lg disabled:opacity-50 transition-colors border border-gray-700"
               >
                 Custom
@@ -165,7 +267,7 @@ export default function CountdownTimer({
                 <button
                   key={`on-${label}`}
                   onClick={() => handleAdd(seconds, true)}
-                  disabled={adding}
+                  disabled={adding || rules.length > 0}
                   className="bg-gray-800 hover:bg-gray-700 text-sm px-3 py-2 rounded-lg disabled:opacity-50 transition-colors border border-gray-700"
                 >
                   {label}
@@ -176,7 +278,7 @@ export default function CountdownTimer({
                   setShowCustom(showCustom === 'on' ? null : 'on');
                   setCustomMinutes('');
                 }}
-                disabled={adding}
+                disabled={adding || rules.length > 0}
                 className="bg-gray-800 hover:bg-gray-700 text-sm px-3 py-2 rounded-lg disabled:opacity-50 transition-colors border border-gray-700"
               >
                 Custom
@@ -224,59 +326,16 @@ export default function CountdownTimer({
                 </div>
               ))}
             </div>
-          ) : rules.length === 0 ? (
+          ) : rulesWithDelete.length === 0 ? (
             <div className="text-center text-gray-500 py-4">
               <span className="text-2xl block mb-2">⏱️</span>
               <p className="text-sm">No active timers</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {rules.map((rule) => {
-                const turnOn = rule.desired_states?.on ?? true;
-                const progress = rule.delay > 0 ? ((rule.delay - rule.remain) / rule.delay) * 100 : 0;
-
-                return (
-                  <div key={rule.id} className="bg-gray-900/50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{turnOn ? '🟢' : '🔴'}</span>
-                        <span className={`text-sm font-medium ${turnOn ? 'text-emerald-400' : 'text-orange-400'}`}>
-                          Turn {turnOn ? 'On' : 'Off'}
-                        </span>
-                        {rule.enable && (
-                          <span className="text-[10px] bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded">
-                            enabled
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleDelete(rule.id)}
-                        className="text-red-400 hover:text-red-300 text-xs transition-colors"
-                      >
-                        ✕ Cancel
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-                      <span>Delay: {formatSeconds(rule.delay)}</span>
-                      {rule.remain > 0 && (
-                        <span className="font-mono text-sm text-gray-200 animate-pulse">
-                          {formatSeconds(rule.remain)} remaining
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="bg-gray-700 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-1000 ${
-                          turnOn ? 'bg-emerald-500' : 'bg-orange-500'
-                        }`}
-                        style={{ width: `${Math.min(progress, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+              {rulesWithDelete.map((rule) => (
+                <TimerDisplay key={rule.id} rule={rule} />
+              ))}
             </div>
           )}
         </div>
