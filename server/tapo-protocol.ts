@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
 import axios from 'axios';
+import { createLogger } from './logger.js';
+
+const log = createLogger('Proto');
 
 export interface TapoRawSession {
   send(request: TapoRequest): Promise<Record<string, unknown>>;
@@ -94,6 +97,7 @@ class KlaspSession implements TapoRawSession {
 
   async send(request: TapoRequest): Promise<Record<string, unknown>> {
     this.nextSeq();
+    log.debug(`KLASP ${this.ip} → ${request.method}`);
     const iv = this.ivWithSeq();
     const ciphertext = aes128CbcEncrypt(
       this.key,
@@ -124,6 +128,7 @@ class KlaspSession implements TapoRawSession {
       decrypted.toString('utf-8'),
     );
     checkTapoError(result);
+    log.debug(`KLASP ${this.ip} ← ${request.method} ok`);
     return result;
   }
 
@@ -148,6 +153,7 @@ class PassthroughSession implements TapoRawSession {
   }
 
   async send(request: TapoRequest): Promise<Record<string, unknown>> {
+    log.debug(`PASSTHROUGH ${this.ip} → ${request.method}`);
     const encrypted = aes128CbcEncrypt(
       this.key,
       this.iv,
@@ -175,6 +181,7 @@ class PassthroughSession implements TapoRawSession {
       decrypted.toString('utf-8'),
     );
     checkTapoError(inner);
+    log.debug(`PASSTHROUGH ${this.ip} ← ${request.method} ok`);
     return inner;
   }
 
@@ -217,6 +224,7 @@ async function createKlaspSession(
     headers: { Cookie: sessionCookie },
   });
 
+  log.info(`KLASP session created for ${ip}`);
   return new KlaspSession(ip, localSeed, remoteSeed, authHash, sessionCookie);
 }
 
@@ -295,17 +303,41 @@ async function createPassthroughSession(
   checkTapoError(loginResult);
 
   const token = loginResult['token'] as string | undefined;
+  log.info(`Passthrough session created for ${ip}`);
   return new PassthroughSession(ip, key, iv, token ?? '', sessionCookie);
 }
 
-function wrapSession(ip: string, session: TapoRawSession): TapoRawSession {
+function wrapSession(
+  ip: string,
+  email: string,
+  password: string,
+  session: TapoRawSession,
+  canRetry = true,
+): TapoRawSession {
   return {
     async send(request: TapoRequest): Promise<Record<string, unknown>> {
       try {
         return await session.send(request);
-      } catch {
+      } catch (err) {
+        log.warn(`Session error for ${ip} on ${request.method}: ${err instanceof Error ? err.message : err}`);
         sessionCache.delete(ip);
-        throw new Error('Session error');
+        if (canRetry) {
+          log.info(`Retrying ${request.method} with fresh session for ${ip}`);
+          try {
+            let fresh: TapoRawSession;
+            try {
+              fresh = await createKlaspSession(ip, email, password);
+            } catch {
+              fresh = await createPassthroughSession(ip, email, password);
+            }
+            const wrapped = wrapSession(ip, email, password, fresh, false);
+            sessionCache.set(ip, wrapped);
+            return await fresh.send(request);
+          } catch (retryErr) {
+            throw new Error(retryErr instanceof Error ? retryErr.message : 'Session error');
+          }
+        }
+        throw new Error(err instanceof Error ? err.message : 'Session error');
       }
     },
     close(): void {
@@ -333,7 +365,7 @@ export async function getOrCreateRawSession(
     }
   }
 
-  const wrapped = wrapSession(ip, session);
+  const wrapped = wrapSession(ip, email, password, session);
   sessionCache.set(ip, wrapped);
   return wrapped;
 }

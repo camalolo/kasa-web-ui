@@ -5,7 +5,9 @@ import { execSync } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
 import type { Device, EmeterData } from './types/device.js';
 import { getOrCreateRawSession, clearAllRawSessions } from './tapo-protocol.js';
+import { createLogger } from './logger.js';
 
+const log = createLogger('Tapo');
 const require = createRequire(import.meta.url);
 const { cloudLogin, loginDeviceByIp } = require('tp-link-tapo-connect');
 
@@ -91,8 +93,10 @@ export async function login(email: string, password: string): Promise<Device[]> 
   sessionEmail = email;
   sessionPassword = password;
 
+  log.info('Cloud login...');
   const cloud = await cloudLogin(email, password);
   const devices = await cloud.listDevices();
+  log.info(`Cloud returned ${devices.length} device(s)`);
 
   deviceControllers.clear();
   cloudDevices.clear();
@@ -100,6 +104,7 @@ export async function login(email: string, password: string): Promise<Device[]> 
 
   for (const d of devices) {
     cloudDevices.set(d.deviceId, d);
+    log.debug(`  device: ${d.deviceName} (${d.deviceModel}) id=${d.deviceId}`);
   }
 
   return queryDevicesLocally();
@@ -114,6 +119,7 @@ export async function discoverDevices(_timeoutMs = 10000): Promise<Device[]> {
     throw new Error('Not logged in');
   }
 
+  log.info('Re-discovering devices from cloud...');
   const cloud = await cloudLogin(sessionEmail, sessionPassword);
   const devices = await cloud.listDevices();
 
@@ -125,6 +131,7 @@ export async function discoverDevices(_timeoutMs = 10000): Promise<Device[]> {
     cloudDevices.set(d.deviceId, d);
   }
 
+  log.info(`Discovery found ${devices.length} device(s)`);
   return queryDevicesLocally();
 }
 
@@ -216,7 +223,7 @@ async function queryDevicesLocally(): Promise<Device[]> {
         hardwareVersion: cloudDev.deviceHwVer,
       });
     } catch (err) {
-      console.error(`Failed to query device ${deviceId} locally:`, err);
+      log.error(`Failed to query device ${deviceId} locally`, err);
       devices.push({
         id: deviceId,
         name: cloudDev.deviceName || 'Unknown',
@@ -318,11 +325,19 @@ export async function togglePowerState(deviceId: string): Promise<boolean> {
 }
 
 export async function setAlias(deviceId: string, alias: string): Promise<boolean> {
-  // Tapo doesn't easily support rename via local API
-  // For now, just update the local cache
+  const session = await getRawSession(deviceId);
+  const encoded = Buffer.from(alias, 'utf-8').toString('base64');
+  await session.send({
+    method: 'set_device_info',
+    params: { nickname: encoded },
+  });
   const cloudDev = cloudDevices.get(deviceId);
   if (cloudDev) {
     cloudDev.deviceName = alias;
+  }
+  const local = localDeviceInfo.get(deviceId);
+  if (local) {
+    local.nickname = alias;
   }
   return true;
 }
@@ -362,10 +377,48 @@ async function getDeviceIp(deviceId: string): Promise<string> {
 async function getRawSession(deviceId: string) {
   const ip = await getDeviceIp(deviceId);
   const { email, password } = getCredentials();
+  log.debug(`Raw session for ${deviceId} at ${ip}`);
   return getOrCreateRawSession(ip, email, password);
 }
 
 // --- Schedules ---
+
+function mapUIToTapoSchedule(rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] }): Record<string, unknown> {
+  const now = new Date();
+  const tapo: Record<string, unknown> = {
+    name: rule.name,
+    s_type: 'normal',
+    e_type: 'normal',
+    s_min: rule.smin,
+    e_min: rule.emin ?? 0,
+    desired_states: { on: rule.sact === 'on' },
+    enable: true,
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+    time_offset: 0,
+  };
+
+  if (rule.eact !== undefined && rule.eact !== '' && rule.eact !== 'none') {
+    tapo.e_action = rule.eact;
+  } else {
+    tapo.e_action = 'none';
+  }
+
+  if (rule.repeat.length > 0) {
+    let bitmask = 0;
+    for (const day of rule.repeat) {
+      bitmask |= (1 << day);
+    }
+    tapo.week_day = bitmask;
+    tapo.mode = 'repeat';
+  } else {
+    tapo.week_day = 0;
+    tapo.mode = 'once';
+  }
+
+  return tapo;
+}
 
 function mapTapoScheduleToUI(rule: Record<string, unknown>): Record<string, unknown> {
   const desired = rule['desired_states'] as Record<string, unknown> | undefined;
@@ -417,18 +470,11 @@ export async function addScheduleRule(
   rule: { name: string; smin: number; sact: string; eact?: string; emin?: number; repeat: number[] },
 ): Promise<void> {
   const session = await getRawSession(deviceId);
+  const tapoRule = mapUIToTapoSchedule(rule);
   await session.send({
     method: 'add_schedule_rule',
     params: {
-      schedule_rule: {
-        name: rule.name,
-        smin: rule.smin,
-        sact: rule.sact,
-        eact: rule.eact,
-        emin: rule.emin,
-        repeat: rule.repeat,
-        enable: true,
-      },
+      schedule_rule: tapoRule,
     },
   });
 }
@@ -438,14 +484,28 @@ export async function editScheduleRule(
   ruleId: string,
   updates: { name?: string; smin?: number; sact?: string; eact?: string; emin?: number; repeat?: number[]; enable?: boolean },
 ): Promise<void> {
+  const tapoUpdates: Record<string, unknown> = { id: ruleId };
+  if (updates.name !== undefined) tapoUpdates.name = updates.name;
+  if (updates.smin !== undefined) tapoUpdates.s_min = updates.smin;
+  if (updates.sact !== undefined) tapoUpdates.desired_states = { on: updates.sact === 'on' };
+  if (updates.eact !== undefined) tapoUpdates.e_action = updates.eact;
+  if (updates.emin !== undefined) tapoUpdates.e_min = updates.emin;
+  if (updates.repeat !== undefined) {
+    if (updates.repeat.length > 0) {
+      let bitmask = 0;
+      for (const day of updates.repeat) {
+        bitmask |= (1 << day);
+      }
+      tapoUpdates.week_day = bitmask;
+    }
+  }
+  if (updates.enable !== undefined) tapoUpdates.enable = updates.enable;
+
   const session = await getRawSession(deviceId);
   await session.send({
     method: 'edit_schedule_rule',
     params: {
-      schedule_rule: {
-        id: ruleId,
-        ...updates,
-      },
+      schedule_rule: tapoUpdates,
     },
   });
 }
