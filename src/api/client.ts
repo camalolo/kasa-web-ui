@@ -1,5 +1,5 @@
 // src/api/client.ts
-import type { Device, EmeterData, EnergyData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
+import type { Device, EmeterData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
 
 const API_BASE = '/plugs/api';
 
@@ -152,9 +152,4 @@ export async function deleteAwayMode(id: string, ruleId: string): Promise<{ ok: 
   return request<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/away-mode/${encodeURIComponent(ruleId)}`, {
     method: 'DELETE',
   });
-}
-
-// --- Energy Data (history) ---
-export async function getEnergyData(id: string, year: number, month: number): Promise<EnergyData> {
-  return request<EnergyData>(`/devices/${encodeURIComponent(id)}/energy-data?year=${year}&month=${month}`);
 }

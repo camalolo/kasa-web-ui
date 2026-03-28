@@ -1,6 +1,5 @@
-// src/components/DeviceDetails.tsx
 import { useState, useEffect } from 'react';
-import type { Device, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse, EmeterData, EnergyData } from '../types/device';
+import type { Device, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse, EmeterData } from '../types/device';
 import ScheduleList from './ScheduleList';
 import CountdownTimer from './CountdownTimer';
 import AwayMode from './AwayMode';
@@ -22,17 +21,16 @@ interface DeviceDetailsProps {
   fetchAwayModeRules: (id: string) => Promise<AwayModeRulesResponse>;
   addAwayMode: (id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }) => Promise<void>;
   deleteAwayMode: (id: string, ruleId: string) => Promise<void>;
-  fetchEnergyData: (id: string, year: number, month: number) => Promise<EnergyData>;
 }
 
 type TabId = 'info' | 'energy' | 'schedules' | 'timer' | 'away';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'info', label: 'Info', icon: 'ℹ️' },
-  { id: 'energy', label: 'Energy', icon: '⚡' },
-  { id: 'schedules', label: 'Schedules', icon: '📅' },
-  { id: 'timer', label: 'Timer', icon: '⏱️' },
-  { id: 'away', label: 'Away', icon: '🏠' },
+  { id: 'info', label: 'Info', icon: '\u2139\uFE0F' },
+  { id: 'energy', label: 'Energy', icon: '\u26A1' },
+  { id: 'schedules', label: 'Schedules', icon: '\uD83D\uDCC5' },
+  { id: 'timer', label: 'Timer', icon: '\u23F1\uFE0F' },
+  { id: 'away', label: 'Away', icon: '\uD83C\uDFE0' },
 ];
 
 export default function DeviceDetails({
@@ -51,7 +49,6 @@ export default function DeviceDetails({
   fetchAwayModeRules,
   addAwayMode,
   deleteAwayMode,
-  fetchEnergyData,
 }: DeviceDetailsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('info');
   const [editName, setEditName] = useState(device.name);
@@ -59,19 +56,14 @@ export default function DeviceDetails({
   const [isRenaming, setIsRenaming] = useState(false);
   const [sysInfo, setSysInfo] = useState<Record<string, unknown> | null>(null);
   const [loadingSysInfo, setLoadingSysInfo] = useState(false);
-  const [energyHistory, setEnergyHistory] = useState<EnergyData>({ day_list: [], month_list: [] });
-  const [energyLoading, setEnergyLoading] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [timeUsage, setTimeUsage] = useState<{ today: string; past7: string; past30: string } | null>(null);
 
-  // Reset state when device changes
   useEffect(() => {
     setEditName(device.name);
     setIsEditing(false);
     setSysInfo(null);
     setActiveTab('info');
     loadSysInfo();
-    loadEnergyData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id]);
 
@@ -81,7 +73,6 @@ export default function DeviceDetails({
       const res = await fetch(`/plugs/api/devices/${encodeURIComponent(device.id)}/sysinfo`);
       const data = await res.json();
       setSysInfo(data);
-      // Extract time usage from sysinfo
       const today = data['time_usage_today'];
       const past7 = data['time_usage_past7'];
       const past30 = data['time_usage_past30'];
@@ -97,29 +88,6 @@ export default function DeviceDetails({
     }
     setLoadingSysInfo(false);
   }
-
-  async function loadEnergyData() {
-    setEnergyLoading(true);
-    try {
-      const now = selectedMonth;
-      const data = await fetchEnergyData(device.id, now.getFullYear(), now.getMonth() + 1);
-      setEnergyHistory(data);
-    } catch {
-      // ignore
-    }
-    setEnergyLoading(false);
-  }
-
-  function handleMonthChange(date: Date) {
-    setSelectedMonth(date);
-  }
-
-  useEffect(() => {
-    if (activeTab === 'energy') {
-      loadEnergyData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonth, activeTab]);
 
   async function handleRename() {
     if (!editName.trim()) return;
@@ -140,14 +108,8 @@ export default function DeviceDetails({
       case 'energy':
         return (
           <EnergyMonitor
-            deviceId={device.id}
             realtimeData={emeterData}
             timeUsage={timeUsage}
-            energyHistory={energyHistory}
-            energyLoading={energyLoading}
-            selectedMonth={selectedMonth}
-            onMonthChange={handleMonthChange}
-            fetchEnergyData={fetchEnergyData}
           />
         );
       case 'schedules':
@@ -204,13 +166,13 @@ export default function DeviceDetails({
                 disabled={isRenaming}
                 className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg disabled:opacity-50"
               >
-                {isRenaming ? '...' : '✓'}
+                {isRenaming ? '...' : '\u2713'}
               </button>
               <button
                 onClick={() => { setIsEditing(false); setEditName(device.name); }}
                 className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg"
               >
-                ✕
+                {'\u2715'}
               </button>
             </div>
           ) : (
@@ -221,7 +183,7 @@ export default function DeviceDetails({
                 className="text-gray-400 hover:text-white text-sm transition-colors"
                 title="Rename"
               >
-                ✏️
+                {'\u270F\uFE0F'}
               </button>
             </div>
           )}
@@ -239,7 +201,7 @@ export default function DeviceDetails({
                 <span className="text-gray-400">Power Off</span>
               )}
             </span>
-            <span className="text-gray-600">•</span>
+            <span className="text-gray-600">{'\u2022'}</span>
             <span className="text-sm text-gray-400">
               {device.online ? 'Online' : 'Offline'}
             </span>
@@ -252,9 +214,9 @@ export default function DeviceDetails({
             <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Runtime</label>
             <div className="grid grid-cols-3 gap-3">
               {([
-                { label: 'Today', value: timeUsage.today, icon: '⏱️' },
-                { label: 'Past 7d', value: timeUsage.past7, icon: '📅' },
-                { label: 'Past 30d', value: timeUsage.past30, icon: '📊' },
+                { label: 'Today', value: timeUsage.today, icon: '\u23F1\uFE0F' },
+                { label: 'Past 7d', value: timeUsage.past7, icon: '\uD83D\uDCC5' },
+                { label: 'Past 30d', value: timeUsage.past30, icon: '\uD83D\uDCCA' },
               ] as const).map(({ label, value, icon }) => (
                 <div key={label} className="bg-gray-800/50 rounded-lg p-3 text-center">
                   <div className="text-sm mb-0.5">{icon}</div>
@@ -275,8 +237,8 @@ export default function DeviceDetails({
               ['IP Address', device.host],
               ['MAC Address', device.mac],
               ['Type', device.deviceType],
-              ['Software', device.softwareVersion || '—'],
-              ['Hardware', device.hardwareVersion || '—'],
+              ['Software', device.softwareVersion || '\u2014'],
+              ['Hardware', device.hardwareVersion || '\u2014'],
             ] as const).map(([label, value]) => (
               <div key={String(label)} className="flex justify-between items-center px-4 py-2.5">
                 <span className="text-xs text-gray-400">{label}</span>
@@ -317,14 +279,14 @@ export default function DeviceDetails({
         {/* Header */}
         <div className="shrink-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🔌</span>
+            <span className="text-2xl">{'\uD83D\uDD0C'}</span>
             <h2 className="text-lg font-semibold truncate">{device.name}</h2>
           </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors text-xl leading-none"
           >
-            ✕
+            {'\u2715'}
           </button>
         </div>
 

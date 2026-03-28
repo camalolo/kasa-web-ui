@@ -1,6 +1,6 @@
 // src/hooks/useDevices.ts
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Device, EmeterData, EnergyData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
+import type { Device, EmeterData, ScheduleRulesResponse, CountdownRulesResponse, AwayModeRulesResponse } from '../types/device';
 import * as api from '../api/client';
 import { encrypt, decrypt } from '../utils/crypto';
 
@@ -38,8 +38,6 @@ export interface UseDevicesReturn {
   fetchAwayModeRules: (id: string) => Promise<AwayModeRulesResponse>;
   addAwayMode: (id: string, rule: { frequency: number; start_time: number; end_time: number; duration: number }) => Promise<void>;
   deleteAwayMode: (id: string, ruleId: string) => Promise<void>;
-  // Energy history
-  fetchEnergyData: (id: string, year: number, month: number) => Promise<EnergyData>;
 }
 
 export function useDevices(): UseDevicesReturn {
@@ -251,14 +249,6 @@ export function useDevices(): UseDevicesReturn {
     await api.deleteAwayMode(id, ruleId);
   }, []);
 
-  const fetchEnergyData = useCallback(async (id: string, year: number, month: number): Promise<EnergyData> => {
-    try {
-      return await api.getEnergyData(id, year, month);
-    } catch {
-      return { day_list: [], month_list: [] };
-    }
-  }, []);
-
   useEffect(() => {
     if (emeterIntervalRef.current) {
       clearInterval(emeterIntervalRef.current);
@@ -316,6 +306,5 @@ export function useDevices(): UseDevicesReturn {
     fetchAwayModeRules,
     addAwayMode,
     deleteAwayMode,
-    fetchEnergyData,
   };
 }

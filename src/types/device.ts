@@ -28,38 +28,19 @@ export interface DeviceChild {
 /** Full device info from getInfo() */
 export interface DeviceInfo {
   sysInfo: Record<string, unknown>;
-  emeter: EmeterRealtime | null;
+  emeter: EmeterData | null;
   schedule: Record<string, unknown> | null;
   cloud: Record<string, unknown> | null;
 }
 
 /** Energy monitoring realtime data */
 export interface EmeterData {
-  voltage: number;       // V
-  current: number;       // A
-  power: number;         // W
-  total: number;         // kWh
-  powerFactor?: number;  // 0-1
-}
-
-/** Energy monitoring data from emeter.get_realtime (raw from device) */
-export interface EmeterRealtime {
-  voltage_mv: number;
-  current_ma: number;
-  power_mw: number;
-  total_wh: number;
-  err_code: number;
-}
-
-/** Energy monitoring monthly/daily stats */
-export interface EmeterStats {
-  day_list: EmeterStatEntry[];
-  month_list: EmeterStatEntry[];
-}
-
-export interface EmeterStatEntry {
-  time: string;    // YYYY-MM-DD or YYYY-MM
-  value: number;   // Wh or kWh depending on context
+  power: number;
+  todayEnergy: number;
+  monthEnergy: number;
+  todayRuntime: number;
+  monthRuntime: number;
+  localTime?: string;
 }
 
 /** Tapo schedule rule */
@@ -95,27 +76,6 @@ export interface AwayModeRule {
   end_time: number;
   duration: number;
   [key: string]: unknown;
-}
-
-/** Energy daily data point */
-export interface EnergyDayData {
-  day: number;
-  time: string;
-  value: number;
-}
-
-/** Energy monthly data point */
-export interface EnergyMonthData {
-  month: number;
-  year: number;
-  time: string;
-  value: number;
-}
-
-/** Energy history response */
-export interface EnergyData {
-  day_list: EnergyDayData[];
-  month_list: EnergyMonthData[];
 }
 
 /** Device time usage info (from getDeviceInfo) */

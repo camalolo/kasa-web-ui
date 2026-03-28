@@ -335,12 +335,14 @@ export async function setLedState(_deviceId: string, _value: boolean): Promise<b
 export async function getEmeter(deviceId: string): Promise<EmeterData | null> {
   try {
     const ctrl = await getOrCreateController(deviceId);
-    const energyData = await ctrl.getEnergyUsage() as Record<string, unknown>;
+    const data = await ctrl.getEnergyUsage() as Record<string, unknown>;
     return {
-      power: (energyData.power ?? 0) as number,
-      voltage: ((energyData.voltage ?? 0) as number) / 1000,
-      current: ((energyData.current ?? 0) as number) / 1000,
-      total: (energyData.total_wh ?? 0) as number / 1000,
+      power: (data.current_power ?? 0) as number,
+      todayEnergy: (data.today_energy ?? 0) as number,
+      monthEnergy: (data.month_energy ?? 0) as number,
+      todayRuntime: (data.today_runtime ?? 0) as number,
+      monthRuntime: (data.month_runtime ?? 0) as number,
+      localTime: typeof data.local_time === 'string' ? data.local_time : undefined,
     };
   } catch {
     return null;
@@ -365,12 +367,49 @@ async function getRawSession(deviceId: string) {
 
 // --- Schedules ---
 
+function mapTapoScheduleToUI(rule: Record<string, unknown>): Record<string, unknown> {
+  const desired = rule['desired_states'] as Record<string, unknown> | undefined;
+  const sact = desired?.['on'] === true ? 'on' : 'off';
+  const eact = rule['e_action'] as string | undefined;
+  const weekDay = rule['week_day'] as number | undefined;
+  let repeat: number[];
+  if (typeof weekDay === 'number' && weekDay > 0) {
+    repeat = [];
+    for (let i = 0; i < 7; i++) {
+      if (weekDay & (1 << i)) repeat.push(i);
+    }
+  } else {
+    repeat = [];
+  }
+  return {
+    ...rule,
+    smin: rule['s_min'] ?? rule['smin'],
+    sact,
+    eact: eact === 'none' ? undefined : eact,
+    emin: rule['e_min'] ?? rule['emin'],
+    repeat,
+  };
+}
+
 export async function getScheduleRules(deviceId: string): Promise<Record<string, unknown>> {
   const session = await getRawSession(deviceId);
-  return session.send({
+  const raw = await session.send({
     method: 'get_schedule_rules',
     params: { start_index: 0 },
   });
+  let payload: Record<string, unknown> = raw;
+  if (raw['result'] && typeof raw['result'] === 'object' && !Array.isArray(raw['result'])) {
+    payload = raw['result'] as Record<string, unknown>;
+  }
+  const scheduleRule = payload['schedule_rule'];
+  if (scheduleRule && typeof scheduleRule === 'object' && !Array.isArray(scheduleRule)) {
+    payload = { ...payload, ...(scheduleRule as Record<string, unknown>) };
+  }
+  const ruleList = payload['rule_list'];
+  if (Array.isArray(ruleList)) {
+    payload = { ...payload, rule_list: ruleList.map((r: unknown) => mapTapoScheduleToUI(r as Record<string, unknown>)) };
+  }
+  return payload;
 }
 
 export async function addScheduleRule(
@@ -500,14 +539,6 @@ export async function deleteAwayModeRules(deviceId: string, ruleIds: string[]): 
 }
 
 // --- Energy Data ---
-
-export async function getEnergyData(deviceId: string, year: number, month: number): Promise<Record<string, unknown>> {
-  const session = await getRawSession(deviceId);
-  return session.send({
-    method: 'get_energy_data',
-    params: { year, month },
-  });
-}
 
 export async function getSchedule(_deviceId: string): Promise<Record<string, unknown>[]> {
   // Tapo schedule API not available in tp-link-tapo-connect

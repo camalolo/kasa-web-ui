@@ -32,7 +32,6 @@ function App() {
     fetchAwayModeRules,
     addAwayMode,
     deleteAwayMode,
-    fetchEnergyData,
   } = useDevices();
 
   if (initializing) {
@@ -93,7 +92,6 @@ function App() {
           fetchAwayModeRules={fetchAwayModeRules}
           addAwayMode={addAwayMode}
           deleteAwayMode={deleteAwayMode}
-          fetchEnergyData={fetchEnergyData}
         />
       )}
     </Layout>

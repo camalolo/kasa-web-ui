@@ -25,7 +25,6 @@ import {
   getAwayModeRules,
   addAwayModeRule,
   deleteAwayModeRules,
-  getEnergyData,
 } from '../kasa.js';
 
 const router = Router();
@@ -289,18 +288,6 @@ router.delete('/devices/:id/away-mode/:ruleId', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete away mode rule' });
-  }
-});
-
-// Energy Data (daily/monthly history)
-router.get('/devices/:id/energy-data', async (req, res) => {
-  try {
-    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
-    const month = parseInt(req.query.month as string, 10) || (new Date().getMonth() + 1);
-    const data = await getEnergyData(req.params.id, year, month);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get energy data' });
   }
 });
 

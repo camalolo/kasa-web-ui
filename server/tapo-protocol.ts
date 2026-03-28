@@ -32,7 +32,7 @@ function aes128CbcDecrypt(key: Buffer, iv: Buffer, ciphertext: Buffer): Buffer {
 }
 
 function checkTapoError(data: Record<string, unknown>): void {
-  const code = data['error_code'];
+  const code = data['err_code'] ?? data['error_code'];
   if (code !== undefined && code !== 0) {
     const msg = data['msg'];
     throw new Error(typeof msg === 'string' ? msg : `Tapo error: ${code}`);
