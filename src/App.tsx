@@ -20,6 +20,7 @@ function App() {
     selectDevice,
     refreshDevices,
     togglePower,
+    setPowerState,
     renameDevice,
     fetchScheduleRules,
     addSchedule,
@@ -71,6 +72,10 @@ function App() {
         scanning={scanning}
         onSelectDevice={selectDevice}
         onTogglePower={togglePower}
+        setPowerState={setPowerState}
+        addCountdown={addCountdown}
+        deleteCountdown={deleteCountdown}
+        fetchCountdownRules={fetchCountdownRules}
       />
 
       {selectedDevice && (

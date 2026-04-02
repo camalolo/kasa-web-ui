@@ -1,5 +1,5 @@
 // src/components/DeviceGrid.tsx
-import type { Device } from '../types/device';
+import type { Device, CountdownRulesResponse } from '../types/device';
 import DeviceCard from './DeviceCard';
 
 interface DeviceGridProps {
@@ -8,6 +8,10 @@ interface DeviceGridProps {
   scanning: boolean;
   onSelectDevice: (id: string) => void;
   onTogglePower: (id: string) => void;
+  setPowerState: (id: string, value: boolean) => Promise<void>;
+  addCountdown: (id: string, delaySeconds: number, turnOn: boolean) => Promise<void>;
+  deleteCountdown: (id: string, ruleId: string) => Promise<void>;
+  fetchCountdownRules: (id: string) => Promise<CountdownRulesResponse>;
 }
 
 export default function DeviceGrid({
@@ -16,6 +20,10 @@ export default function DeviceGrid({
   scanning,
   onSelectDevice,
   onTogglePower,
+  setPowerState,
+  addCountdown,
+  deleteCountdown,
+  fetchCountdownRules,
 }: DeviceGridProps) {
   if (devices.length === 0) {
     if (scanning) {
@@ -61,6 +69,10 @@ export default function DeviceGrid({
           isSelected={device.id === selectedDeviceId}
           onSelect={() => onSelectDevice(device.id)}
           onTogglePower={() => onTogglePower(device.id)}
+          setPowerState={setPowerState}
+          addCountdown={addCountdown}
+          deleteCountdown={deleteCountdown}
+          fetchCountdownRules={fetchCountdownRules}
         />
       ))}
     </div>

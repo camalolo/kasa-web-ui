@@ -1,11 +1,16 @@
 // src/components/DeviceCard.tsx
-import type { Device } from '../types/device';
+import QuickTimer from './QuickTimer';
+import type { Device, CountdownRulesResponse } from '../types/device';
 
 interface DeviceCardProps {
   device: Device;
   isSelected: boolean;
   onSelect: () => void;
   onTogglePower: () => void;
+  setPowerState: (id: string, value: boolean) => Promise<void>;
+  addCountdown: (id: string, delaySeconds: number, turnOn: boolean) => Promise<void>;
+  deleteCountdown: (id: string, ruleId: string) => Promise<void>;
+  fetchCountdownRules: (id: string) => Promise<CountdownRulesResponse>;
 }
 
 function getDeviceIcon(deviceType: string): string {
@@ -27,7 +32,7 @@ function getChildCountText(device: Device): string {
   return '';
 }
 
-export default function DeviceCard({ device, isSelected, onSelect, onTogglePower }: DeviceCardProps) {
+export default function DeviceCard({ device, isSelected, onSelect, onTogglePower, setPowerState, addCountdown, deleteCountdown, fetchCountdownRules }: DeviceCardProps) {
   return (
     <div
       onClick={onSelect}
@@ -104,11 +109,14 @@ export default function DeviceCard({ device, isSelected, onSelect, onTogglePower
         </div>
       </div>
 
-      {/* Firmware badge */}
-      <div className="mt-3 pt-3 border-t border-gray-800 flex items-center justify-between text-[11px] text-gray-500">
-        <span>FW: {device.softwareVersion || '—'}</span>
-        <span>HW: {device.hardwareVersion || '—'}</span>
-      </div>
+      <QuickTimer
+        deviceId={device.id}
+        isOn={!!device.relayState}
+        setPowerState={setPowerState}
+        addCountdown={addCountdown}
+        deleteCountdown={deleteCountdown}
+        fetchCountdownRules={fetchCountdownRules}
+      />
     </div>
   );
 }

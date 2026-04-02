@@ -45,7 +45,7 @@ function TimerDisplay({ rule, onExpired }: { rule: LiveRule; onExpired: () => vo
     return () => clearInterval(id);
   }, []);
 
-  const elapsed = Math.floor((now - rule.fetchedAt) / 1000);
+  const elapsed = Math.max(0, Math.floor((now - rule.fetchedAt) / 1000));
   const remain = Math.max(rule.fetchedRemain - elapsed, 0);
   const progress = rule.delay > 0 ? ((rule.delay - remain) / rule.delay) * 100 : 0;
 
