@@ -82,6 +82,37 @@ const cloudDevices = new Map<string, { deviceId: string; deviceName: string; dev
 // Map: deviceId → locally-resolved info
 const localDeviceInfo = new Map<string, { ip: string; deviceOn: boolean; nickname: string }>();
 
+let arpRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startArpRefresh(): void {
+  if (arpRefreshTimer) return; // already running
+
+  arpRefreshTimer = setInterval(async () => {
+    try {
+      const ips = new Set<string>();
+      for (const local of localDeviceInfo.values()) {
+        ips.add(local.ip);
+      }
+      for (const cloudDev of cloudDevices.values()) {
+        if (cloudDev.ip) ips.add(cloudDev.ip);
+      }
+      if (ips.size === 0) return;
+
+      await Promise.allSettled([...ips].map((ip) => pingHost(ip)));
+      log.debug(`ARP refresh: pinged ${ips.size} device(s)`);
+    } catch {
+      // ignore
+    }
+  }, 60_000);
+}
+
+export function stopArpRefresh(): void {
+  if (arpRefreshTimer) {
+    clearInterval(arpRefreshTimer);
+    arpRefreshTimer = null;
+  }
+}
+
 function getCredentials(): { email: string; password: string } {
   if (!sessionEmail || !sessionPassword) {
     throw new Error('Not logged in');
@@ -101,6 +132,7 @@ export async function login(email: string, password: string): Promise<Device[]> 
   deviceControllers.clear();
   cloudDevices.clear();
   localDeviceInfo.clear();
+  startArpRefresh();
 
   for (const d of devices) {
     cloudDevices.set(d.deviceId, d);
@@ -739,5 +771,6 @@ export async function logout(): Promise<void> {
   deviceControllers.clear();
   cloudDevices.clear();
   localDeviceInfo.clear();
+  stopArpRefresh();
   clearAllRawSessions();
 }

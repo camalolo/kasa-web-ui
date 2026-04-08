@@ -199,11 +199,18 @@ export function useDevices(): UseDevicesReturn {
       const info = await api.getDeviceInfo(id);
       const rawOn = info['device_on'];
       const deviceOn = rawOn === true || rawOn === 1;
+      const unreachable = info['_unreachable'] === true;
+      const ip = info['ip'];
       setDevices((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, relayState: deviceOn } : d)),
+        prev.map((d) => {
+          if (d.id !== id) return d;
+          const updated = { ...d, relayState: deviceOn, online: !unreachable };
+          if (typeof ip === 'string' && ip) updated.host = ip;
+          return updated;
+        }),
       );
     } catch {
-      // ignore
+      // Network error — mark offline but don't spam
     }
   }, []);
 
