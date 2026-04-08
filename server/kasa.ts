@@ -158,11 +158,17 @@ function getOrCreateController(deviceId: string): Promise<any> {
     }
 
     if (!ip) {
+      deviceControllers.delete(deviceId);
       throw new Error(`Cannot resolve IP for device ${deviceId} (MAC: ${cloudDev.deviceMac})`);
     }
 
-    const ctrl = await loginDeviceByIp(email, password, ip);
-    return ctrl;
+    try {
+      const ctrl = await loginDeviceByIp(email, password, ip);
+      return ctrl;
+    } catch (err) {
+      deviceControllers.delete(deviceId);
+      throw err;
+    }
   };
 
   const controllerPromise = setupController();
@@ -295,9 +301,25 @@ export async function getDevice(deviceId: string): Promise<Device | undefined> {
 }
 
 export async function getDeviceInfo(deviceId: string): Promise<Record<string, unknown>> {
-  const ctrl = await getOrCreateController(deviceId);
-  const info = await ctrl.getDeviceInfo();
-  return info as Record<string, unknown>;
+  try {
+    const ctrl = await getOrCreateController(deviceId);
+    const info = await ctrl.getDeviceInfo();
+    // Update local cache on success
+    const infoAny = info as Record<string, unknown>;
+    const local = localDeviceInfo.get(deviceId);
+    if (local) {
+      const rawOn = infoAny.device_on;
+      local.deviceOn = rawOn === true || rawOn === 1;
+    }
+    return info as Record<string, unknown>;
+  } catch {
+    // Device unreachable — return cached state so frontend doesn't break
+    const local = localDeviceInfo.get(deviceId);
+    if (local) {
+      return { device_on: local.deviceOn, _unreachable: true };
+    }
+    return { device_on: false, _unreachable: true };
+  }
 }
 
 export async function setPowerState(deviceId: string, value: boolean): Promise<boolean> {
